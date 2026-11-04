@@ -13,7 +13,9 @@ import type {
   UsageGroup,
   UsageMeta,
   UsageRequestRow,
+  UsageSession,
   UsageTokens,
+  UsageTotals,
 } from '@/types/usage';
 import { normalizeApiBase } from '@/utils/connection';
 
@@ -73,9 +75,7 @@ const tokensOf = (row: Raw): UsageTokens => ({
   totalTokens: num(row.total_tokens),
 });
 
-const aggregateRow = (row: Raw): UsageAggregateRow => ({
-  t: strOrNull(row.t),
-  group: typeof row.group === 'string' ? row.group : null,
+const totalsOf = (row: Raw): UsageTotals => ({
   requests: num(row.requests),
   failed: num(row.failed),
   ...tokensOf(row),
@@ -84,12 +84,19 @@ const aggregateRow = (row: Raw): UsageAggregateRow => ({
   avgLatencyMs: num(row.avg_latency_ms),
 });
 
+const aggregateRow = (row: Raw): UsageAggregateRow => ({
+  t: strOrNull(row.t),
+  group: typeof row.group === 'string' ? row.group : null,
+  ...totalsOf(row),
+});
+
 export const normalizeAggregate = (value: unknown): UsageAggregateRow[] =>
   rowsOf(value).map(aggregateRow);
 
 export const normalizeRequests = (value: unknown): UsageRequestRow[] =>
   rowsOf(value).map((row) => ({
     ts: str(row.ts),
+    session: str(row.session),
     key: str(row.key),
     client: str(row.client),
     clientIp: str(row.client_ip),
@@ -104,6 +111,18 @@ export const normalizeRequests = (value: unknown): UsageRequestRow[] =>
     latencyMs: num(row.latency_ms),
     failed: row.failed === true || row.failed === 1,
     statusCode: typeof row.status_code === 'number' ? row.status_code : null,
+  }));
+
+export const normalizeSessions = (value: unknown): UsageSession[] =>
+  rowsOf(value).map((row) => ({
+    ...totalsOf(row),
+    session: str(row.session),
+    firstTs: str(row.first_ts),
+    lastTs: str(row.last_ts),
+    key: str(row.key),
+    client: str(row.client),
+    agent: str(row.agent),
+    models: strings(row.models),
   }));
 
 export const normalizeMeta = (value: unknown): UsageMeta => {
@@ -158,6 +177,13 @@ export interface UsageRequestsQuery {
   key?: string;
   model?: string;
   client?: string;
+  session?: string;
+}
+
+export interface UsageSessionsQuery {
+  from: string;
+  to: string;
+  limit?: number;
 }
 
 export const usageApi = {
@@ -165,6 +191,8 @@ export const usageApi = {
     normalizeAggregate(await getJson(conn, '/usage/aggregate', { ...query }, signal)),
   requests: async (conn: UsageConnection, query: UsageRequestsQuery, signal?: AbortSignal) =>
     normalizeRequests(await getJson(conn, '/usage/requests', { ...query }, signal)),
+  sessions: async (conn: UsageConnection, query: UsageSessionsQuery, signal?: AbortSignal) =>
+    normalizeSessions(await getJson(conn, '/usage/sessions', { ...query }, signal)),
   meta: async (conn: UsageConnection, signal?: AbortSignal) =>
     normalizeMeta(await getJson(conn, '/usage/meta', {}, signal)),
 };

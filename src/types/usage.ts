@@ -34,6 +34,8 @@ export interface UsageAggregateRow extends UsageTotals {
 
 export interface UsageRequestRow extends UsageTokens {
   ts: string;
+  /** Client session id; empty when the client sent none. */
+  session: string;
   key: string;
   client: string;
   clientIp: string;
@@ -55,4 +57,16 @@ export interface UsageMeta {
   models: string[];
   clients: string[];
   pricing: { unpricedModels: string[] };
+}
+
+/** One client session (for Claude Code, its session id) with its aggregate totals. */
+export interface UsageSession extends UsageTotals {
+  session: string;
+  firstTs: string;
+  lastTs: string;
+  key: string;
+  client: string;
+  agent: string;
+  /** By cost, highest first. */
+  models: string[];
 }

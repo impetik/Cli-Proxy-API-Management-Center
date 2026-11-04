@@ -4,10 +4,17 @@ import {
   normalizeAggregate,
   normalizeMeta,
   normalizeRequests,
+  normalizeSessions,
   usageApi,
   usageApiBase,
 } from '@/services/api/usage';
-import { RAW_KEY_BY_HOUR, RAW_META, RAW_NONE_BY_HOUR, RAW_REQUESTS } from './fixtures/usage';
+import {
+  RAW_KEY_BY_HOUR,
+  RAW_META,
+  RAW_NONE_BY_HOUR,
+  RAW_REQUESTS,
+  RAW_SESSIONS,
+} from './fixtures/usage';
 
 const CONN = { apiBase: 'http://100.90.164.91:8317', managementKey: 'test-key' };
 
@@ -91,6 +98,42 @@ describe('usage API normalisation', () => {
       pricing: { unpricedModels: ['mystery-model'] },
     });
     expect(normalizeMeta({}).firstTs).toBeNull();
+  });
+});
+
+describe('usage sessions', () => {
+  test('session rows keep identity, string models only and the aggregate fields', () => {
+    const [first, second] = normalizeSessions(RAW_SESSIONS);
+    expect(first).toMatchObject({
+      session: '3f2a9c1e-7b4d-4e2a-9f10-aa11bb22cc33',
+      firstTs: '2026-11-04T01:00:00Z',
+      lastTs: '2026-11-04T02:10:00Z',
+      key: 'ali',
+      client: 'macbook',
+      agent: 'claude-code',
+      models: ['claude-opus-5-5', 'claude-haiku-5-5'],
+      requests: 9,
+      totalTokens: 2800,
+      listCostUsd: 0.3,
+    });
+    expect(second.models).toEqual([]);
+    expect(normalizeSessions(null)).toEqual([]);
+  });
+
+  test('request rows carry their session and the requests endpoint filters by it', async () => {
+    expect(normalizeRequests({ rows: [{ session: 'abc' }, {}] }).map((r) => r.session)).toEqual([
+      'abc',
+      '',
+    ]);
+    const fetchSpy = mockFetch(async () => Response.json(RAW_SESSIONS));
+    await usageApi.sessions(CONN, { from: 'a', to: 'b', limit: 100 });
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      'http://100.90.164.91:8318/usage/sessions?from=a&to=b&limit=100'
+    );
+    await usageApi.requests(CONN, { from: 'a', to: 'b', session: 'abc' });
+    expect(fetchSpy.mock.calls[1][0]).toBe(
+      'http://100.90.164.91:8318/usage/requests?from=a&to=b&session=abc'
+    );
   });
 });
 

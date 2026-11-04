@@ -159,3 +159,38 @@ export const RAW_META = {
     unpriced_models: ['mystery-model'],
   },
 };
+
+export const RAW_SESSIONS = {
+  rows: [
+    {
+      session: '3f2a9c1e-7b4d-4e2a-9f10-aa11bb22cc33',
+      first_ts: '2026-11-04T01:00:00Z',
+      last_ts: '2026-11-04T02:10:00Z',
+      key: 'ali',
+      client: 'macbook',
+      agent: 'claude-code',
+      models: ['claude-opus-5-5', 'claude-haiku-5-5', 3],
+      requests: 9,
+      failed: 0,
+      ...tokens(500, 2000, 100, 200, 20),
+      list_cost_usd: 0.3,
+      billed_cost_usd: 0,
+      avg_latency_ms: 900,
+    },
+    {
+      session: 'b7c8d9e0-0000-4000-8000-000000000001',
+      first_ts: '2026-11-04T00:05:00Z',
+      last_ts: '2026-11-04T00:05:30Z',
+      key: 'dirso-builder-staging',
+      client: '',
+      agent: 'node',
+      models: 'not-a-list',
+      requests: 4,
+      failed: 1,
+      ...tokens(200, 0, 0, 100),
+      list_cost_usd: 0.9,
+      billed_cost_usd: 0.1,
+      avg_latency_ms: 800,
+    },
+  ],
+};
