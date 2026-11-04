@@ -182,6 +182,23 @@ describe('sessions rendering', () => {
     expect(html).toMatch(/aria-pressed="true"[^>]*>Most recent</);
   });
 
+  test('rows keep the order the API sorted them in', () => {
+    const html = render('');
+    expect(html.indexOf('>3f2a9c1e<')).toBeLessThan(html.indexOf('>b7c8d9e0<'));
+    const reversed = renderToStaticMarkup(
+      createElement(SessionsTable, {
+        rows: [...sessions].reverse(),
+        sort: 'recent',
+        onSortChange: noop,
+        selected: '',
+        onSelect: noop,
+        loading: false,
+        error: null,
+      })
+    );
+    expect(reversed.indexOf('>b7c8d9e0<')).toBeLessThan(reversed.indexOf('>3f2a9c1e<'));
+  });
+
   test('the selected session is pressed and every other one is not', () => {
     const html = render('3f2a9c1e-7b4d-4e2a-9f10-aa11bb22cc33');
     expect(html).toMatch(/aria-pressed="true"[^>]*title="3f2a9c1e-[^"]*"/);

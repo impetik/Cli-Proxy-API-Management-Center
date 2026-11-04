@@ -142,9 +142,9 @@ export function UsagePage() {
     usageApi.requests(conn, { ...range!, limit: 100, ...filters }, signal)
   );
 
-  const sessionsKey = ready ? JSON.stringify([range, reload]) : null;
+  const sessionsKey = ready ? JSON.stringify([range, sessionSort, reload]) : null;
   const sessions = useQuery(sessionsKey, scope, (signal) =>
-    usageApi.sessions(conn, { ...range!, limit: 100 }, signal)
+    usageApi.sessions(conn, { ...range!, limit: 100, sort: sessionSort }, signal)
   );
 
   const refresh = useCallback(() => {

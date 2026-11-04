@@ -8,7 +8,6 @@ import {
   sessionMinutes,
   formatUsd,
   shortSessionId,
-  sortSessions,
   rankSeries,
   resolveRange,
   splitProviderGroup,
@@ -119,18 +118,6 @@ describe('usage formatting', () => {
 
 describe('usage sessions logic', () => {
   const sessions = normalizeSessions(RAW_SESSIONS);
-
-  test('sessions sort by recency or by list cost, without mutating the input', () => {
-    expect(sortSessions(sessions, 'recent').map((s) => s.key)).toEqual([
-      'ali',
-      'dirso-builder-staging',
-    ]);
-    expect(sortSessions(sessions, 'cost').map((s) => s.key)).toEqual([
-      'dirso-builder-staging',
-      'ali',
-    ]);
-    expect(sessions[0].key).toBe('ali');
-  });
 
   test('durations are whole minutes, and short ids keep the first eight characters', () => {
     expect(sessionMinutes('2026-11-04T01:00:00Z', '2026-11-04T02:10:00Z')).toBe(70);

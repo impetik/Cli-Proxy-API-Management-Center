@@ -184,6 +184,8 @@ export interface UsageSessionsQuery {
   from: string;
   to: string;
   limit?: number;
+  /** Server-side order over every session in the range (default recent). */
+  sort?: 'recent' | 'cost';
 }
 
 export const usageApi = {

@@ -126,9 +126,9 @@ describe('usage sessions', () => {
       '',
     ]);
     const fetchSpy = mockFetch(async () => Response.json(RAW_SESSIONS));
-    await usageApi.sessions(CONN, { from: 'a', to: 'b', limit: 100 });
+    await usageApi.sessions(CONN, { from: 'a', to: 'b', limit: 100, sort: 'cost' });
     expect(fetchSpy.mock.calls[0][0]).toBe(
-      'http://100.90.164.91:8318/usage/sessions?from=a&to=b&limit=100'
+      'http://100.90.164.91:8318/usage/sessions?from=a&to=b&limit=100&sort=cost'
     );
     await usageApi.requests(CONN, { from: 'a', to: 'b', session: 'abc' });
     expect(fetchSpy.mock.calls[1][0]).toBe(

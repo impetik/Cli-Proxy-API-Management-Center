@@ -7,7 +7,6 @@ import {
   formatUsd,
   sessionMinutes,
   shortSessionId,
-  sortSessions,
   type SessionSort,
 } from '../logic';
 import { Segmented } from './Segmented';
@@ -85,7 +84,7 @@ export function SessionsTable({
                 </tr>
               </thead>
               <tbody>
-                {sortSessions(rows, sort).map((row) => {
+                {rows.map((row) => {
                   const isSelected = Boolean(row.session) && row.session === selected;
                   return (
                     <tr
