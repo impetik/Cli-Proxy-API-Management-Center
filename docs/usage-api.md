@@ -55,9 +55,11 @@ Newest first. Each row: `ts`, `key`, `client` (machine name), `client_ip`, `agen
 
 One row per client session (`raw.session_id`; for Claude Code it is the Claude Code session
 id). Query: `from`, `to`, `limit` (default 100, max 1000), optional `key`, `client`, `agent`.
-Sorted by `last_ts` descending. Each row: `session`, `first_ts`, `last_ts`, `key`, `client`,
+Each row: `session`, `first_ts`, `last_ts`, `key`, `client`,
 `agent`, `models` (array, by cost descending), plus every aggregate field above. A session
 seen under several keys/clients/agents reports the one with the most requests.
+`sort=recent` (default, `last_ts` descending) or `sort=cost` (`list_cost_usd` descending, then
+`last_ts`); anything else is `400`.
 
 `/usage/requests` also accepts `session=<id>` and returns `session` on each row.
 

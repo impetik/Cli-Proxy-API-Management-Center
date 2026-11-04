@@ -125,7 +125,8 @@ NORM = """WITH n AS (SELECT ts, key_label, client_ip, user_agent, provider, mode
   COALESCE(json_extract(raw, '$.token_breakdown.output.reasoning_tokens'), reasoning_tokens, 0) AS rsn,
   COALESCE(json_extract(raw, '$.token_breakdown.total_tokens'), total_tokens, 0) AS tot,
   client_name(client_ip, json_extract(raw, '$.resolved_client_ip'), json_extract(raw, '$.x_forwarded_for')) AS client,
-  agent(user_agent) AS agent
+  agent(user_agent) AS agent,
+  COALESCE(NULLIF(json_extract(raw, '$.session_id'), ''), request_id) AS session
   FROM usage WHERE ts >= :from AND ts < :to),
 c AS (SELECT *, cost(model, inp, cr, cw, out) AS lc, CASE WHEN auth_type = 'apikey' THEN cost(model, inp, cr, cw, out) ELSE 0 END AS bc FROM n)
 """
@@ -166,20 +167,46 @@ def aggregate(q):
     return {**w, "group": g, "bucket": b, "rows": rows}
 
 
-def requests_(q):
-    w = window(q)
+def filtered(q, cols):
+    """Window + limit + exact-match filters -> (WHERE clause, params)."""
     try: limit = min(int(one(q, "limit", "100")), 1000)
     except ValueError: raise Bad("limit must be an integer")
     if limit < 1: raise Bad("limit must be at least 1")
-    where, args = [], dict(w, limit=limit)
-    for name, col in (("key", "key_label"), ("model", "model"), ("client", "client")):
+    where, args = [], dict(window(q), limit=limit)
+    for name, col in cols:
         if (v := one(q, name)) is not None: where.append(f"{col} = :{name}"); args[name] = v
-    sql = (NORM + """SELECT ts, key_label AS key, client, client_ip, agent, user_agent, provider, auth_type, model, endpoint,
+    return (" WHERE " + " AND ".join(where) if where else ""), args
+
+
+def requests_(q):
+    where, args = filtered(q, (("key", "key_label"), ("model", "model"), ("client", "client"), ("session", "session")))
+    sql = (NORM + """SELECT ts, session, key_label AS key, client, client_ip, agent, user_agent, provider, auth_type, model, endpoint,
       inp AS input_tokens, cr AS cache_read_tokens, cw AS cache_write_tokens, out AS output_tokens, rsn AS reasoning_tokens,
       tot AS total_tokens, ROUND(lc, 6) AS list_cost_usd, ROUND(bc, 6) AS billed_cost_usd, latency_ms, failed, status_code
-      FROM c""" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY ts DESC LIMIT :limit")
+      FROM c""" + where + " ORDER BY ts DESC LIMIT :limit")
     with closing(connect()) as db:
-        return {**w, "rows": [dict(r) for r in db.execute(sql, args)]}
+        return {"from": args["from"], "to": args["to"], "rows": [dict(r) for r in db.execute(sql, args)]}
+
+
+# Majority value of a column per session (ties broken alphabetically).
+PICK = """{0} AS (SELECT session, {1} AS v, ROW_NUMBER() OVER (PARTITION BY session ORDER BY COUNT(*) DESC, {1}) AS rn
+  FROM c GROUP BY session, {1})"""
+
+
+def sessions(q):
+    where, args = filtered(q, (("key", "pk.v"), ("client", "pc.v"), ("agent", "pa.v")))
+    order = {"recent": "a.last_ts DESC", "cost": "a.list_cost_usd DESC, a.last_ts DESC"}.get(one(q, "sort", "recent"))
+    if not order: raise Bad("sort must be recent or cost")
+    sql = (NORM + ", " + ", ".join(PICK.format(n, col) for n, col in (("pk", "key_label"), ("pc", "client"), ("pa", "agent")))
+           + """, m AS (SELECT session, model, SUM(lc) AS mc FROM c GROUP BY session, model)
+      SELECT a.*, pk.v AS key, pc.v AS client, pa.v AS agent,
+        (SELECT json_group_array(model) FROM (SELECT model FROM m WHERE m.session = a.session ORDER BY mc DESC, model)) AS models
+      FROM (SELECT session, MIN(ts) AS first_ts, MAX(ts) AS last_ts, """ + AGG + """ FROM c GROUP BY session) a
+      JOIN pk ON pk.session = a.session AND pk.rn = 1 JOIN pc ON pc.session = a.session AND pc.rn = 1
+      JOIN pa ON pa.session = a.session AND pa.rn = 1""" + where + f" ORDER BY {order} LIMIT :limit")
+    with closing(connect()) as db:
+        rows = [{**dict(r), "models": json.loads(r["models"])} for r in db.execute(sql, args)]
+    return {"from": args["from"], "to": args["to"], "rows": rows}
 
 
 def meta(q):
@@ -195,7 +222,7 @@ def meta(q):
                         "unpriced_models": [m for m in models if not price_of(m)]}}
 
 
-ROUTES = {"/usage/aggregate": aggregate, "/usage/requests": requests_, "/usage/meta": meta}
+ROUTES = {"/usage/aggregate": aggregate, "/usage/requests": requests_, "/usage/sessions": sessions, "/usage/meta": meta}
 
 
 class H(BaseHTTPRequestHandler):

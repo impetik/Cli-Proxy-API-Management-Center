@@ -11,8 +11,8 @@ usage_db, prices_db, key_file = (os.path.join(tmp, n) for n in ("usage.db", "pri
 KEY = "test-key-123"
 open(key_file, "w").write(KEY + "\n")
 
-def raw(auth, unc, cr, cw, out, rsn, resolved="", xff=""):
-    return json.dumps({"auth_type": auth, "resolved_client_ip": resolved, "x_forwarded_for": xff,
+def raw(auth, unc, cr, cw, out, rsn, session, resolved="", xff=""):
+    return json.dumps({"auth_type": auth, "session_id": session, "resolved_client_ip": resolved, "x_forwarded_for": xff,
         "token_breakdown": {"schema_version": 2, "total_tokens": unc + cr + cw + out,
             "input": {"uncached_tokens": unc, "cache_read_tokens": cr, "cache_write_tokens": cw},
             "output": {"total_tokens": out, "reasoning_tokens": rsn}}})
@@ -25,17 +25,17 @@ db.execute("""CREATE TABLE usage (request_id TEXT PRIMARY KEY, ts TEXT, key_labe
 rows = [
     # Anthropic style: input excludes cache.
     ("r1", "2026-11-03T10:00:00.000Z", "ali", "100.114.209.35", "claude-cli/2.1.318 (external, cli)", "claude",
-     "claude-opus-5-5", 2, 50, 0, 1000, 100, 1152, 100, 0, 200, raw("oauth", 2, 1000, 100, 50, 0)),
+     "claude-opus-5-5", 2, 50, 0, 1000, 100, 1152, 100, 0, 200, raw("oauth", 2, 1000, 100, 50, 0, "s-A")),
     # OpenAI style: input column INCLUDES the 800 cached tokens; the breakdown splits them.
     ("r2", "2026-11-03T11:00:00.000Z", "ali", "100.114.209.35", "node", "codex",
-     "gpt-6.1-sol", 1000, 10, 5, 800, 0, 1010, 300, 0, 200, raw("oauth", 200, 800, 0, 10, 5)),
+     "gpt-6.1-sol", 1000, 10, 5, 800, 0, 1010, 300, 0, 200, raw("oauth", 200, 800, 0, 10, 5, "s-A")),
     # OpenRouter API-key row arriving through the tunnel (client_ip is cloud-pc itself).
     ("r3", "2026-11-04T09:00:00.000Z", "dirso-builder-staging", "100.90.164.91",
      "ai/7.0.150 ai-sdk-provider-utils/5.0.61 cloudflare-workers", "openrouter", "glm-5.3-prime",
-     110, 100, 0, 10, 0, 210, 400, 0, 200, raw("apikey", 100, 10, 0, 100, 0, "100.90.164.91", "2a06:98c0::1")),
+     110, 100, 0, 10, 0, 210, 400, 0, 200, raw("apikey", 100, 10, 0, 100, 0, "s-B", "100.90.164.91", "2a06:98c0::1")),
     # Unknown model, failed.
-    ("r4", "2026-11-04T10:00:00.000Z", "ali", "100.114.209.35", "curl/8.7.1", "claude",
-     "mystery-1", 5, 5, 0, 0, 0, 10, 500, 1, 500, raw("oauth", 5, 0, 0, 5, 0)),
+    ("r4", "2026-11-04T10:00:00.000Z", "ali", "100.80.254.44", "claude-cli/2.1.318 (external, cli)", "claude",
+     "mystery-1", 5, 5, 0, 0, 0, 10, 500, 1, 500, raw("oauth", 5, 0, 0, 5, 0, "s-A")),
 ]
 db.executemany("""INSERT INTO usage (request_id, ts, key_label, client_ip, user_agent, provider, model, input_tokens,
   output_tokens, reasoning_tokens, cache_read_tokens, cache_creation_tokens, total_tokens, latency_ms, failed,
@@ -107,15 +107,37 @@ try:
         ("2026-11-04T00:00:00Z", "ali")], rows_
 
     rows_ = json.loads(call(f"/usage/aggregate?{R}&group=client")[2])["rows"]
-    assert {r["group"] for r in rows_} == {"100.114.209.35", "cloud-pc (tunnel)"}, rows_
+    assert {r["group"] for r in rows_} == {"100.114.209.35", "100.80.254.44", "cloud-pc (tunnel)"}, rows_
     rows_ = json.loads(call(f"/usage/aggregate?{R}&group=agent")[2])["rows"]
-    assert {r["group"] for r in rows_} == {"claude-code", "node", "ai-sdk", "curl"}, rows_
+    assert {r["group"] for r in rows_} == {"claude-code", "node", "ai-sdk"}, rows_
 
     reqs = json.loads(call(f"/usage/requests?{R}&limit=2")[2])["rows"]
     assert [r["model"] for r in reqs] == ["mystery-1", "glm-5.3-prime"], reqs
     assert reqs[1]["auth_type"] == "apikey" and reqs[1]["client"] == "cloud-pc (tunnel)", reqs[1]
     reqs = json.loads(call(f"/usage/requests?{R}&model=gpt-6.1-sol")[2])["rows"]
     assert len(reqs) == 1 and close(reqs[0]["list_cost_usd"], 0.00058) and reqs[0]["billed_cost_usd"] == 0, reqs
+
+    # Sessions: s-A spans 2 clients, 3 models, 2 agents -> majority values, models by cost.
+    sess = json.loads(call(f"/usage/sessions?{R}")[2])["rows"]
+    assert [s["session"] for s in sess] == ["s-A", "s-B"], sess          # last_ts descending
+    a = sess[0]
+    assert (a["key"], a["client"], a["agent"]) == ("ali", "100.114.209.35", "claude-code"), a
+    assert a["models"] == ["claude-opus-5-5", "gpt-6.1-sol", "mystery-1"], a
+    assert (a["first_ts"], a["last_ts"]) == ("2026-11-03T10:00:00.000Z", "2026-11-04T10:00:00.000Z"), a
+    assert (a["requests"], a["failed"], a["input_tokens"]) == (3, 1, 207) and close(a["list_cost_usd"], 0.002288), a
+    assert sess[1]["client"] == "cloud-pc (tunnel)" and close(sess[1]["billed_cost_usd"], 0.001188), sess[1]
+    one_ = lambda qs: [s["session"] for s in json.loads(call(f"/usage/sessions?{R}&{qs}")[2])["rows"]]
+    assert one_("limit=1") == ["s-A"]
+    assert one_("key=dirso-builder-staging") == ["s-B"] and one_("agent=claude-code") == ["s-A"]
+    assert one_("client=cloud-pc%20(tunnel)") == ["s-B"] and one_("client=100.80.254.44") == []
+    # On 11-04 alone s-A is newest (r4, $0) but s-B costs more.
+    D = "from=2026-11-04T00:00:00Z&to=2026-11-05T00:00:00Z"
+    srt = lambda qs: [s["session"] for s in json.loads(call(f"/usage/sessions?{D}&{qs}")[2])["rows"]]
+    assert srt("") == srt("sort=recent") == ["s-A", "s-B"] and srt("sort=cost") == ["s-B", "s-A"]
+    for bad in ("limit=abc", "limit=0", "from=nope", "sort=bogus"):
+        assert call(f"/usage/sessions?{bad}")[0] == 400, bad
+    reqs = json.loads(call(f"/usage/requests?{R}&session=s-B")[2])["rows"]
+    assert [(r["session"], r["model"]) for r in reqs] == [("s-B", "glm-5.3-prime")], reqs
 
     meta = json.loads(call("/usage/meta")[2])
     assert meta["pricing"]["unpriced_models"] == ["mystery-1"], meta
