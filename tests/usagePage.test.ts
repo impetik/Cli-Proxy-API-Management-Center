@@ -8,10 +8,12 @@ import {
   normalizeAggregate,
   normalizeMeta,
   normalizeRequests,
+  normalizeSessions,
 } from '@/services/api/usage';
 import { UsageReport } from '@/features/usage/components/UsageReport';
 import { RequestsTable } from '@/features/usage/components/RequestsTable';
 import { UsageStatus } from '@/features/usage/components/UsageStatus';
+import { SessionsTable } from '@/features/usage/components/SessionsTable';
 import type { UsageReportData } from '@/features/usage/logic';
 import {
   RAW_KEY_BY_HOUR,
@@ -19,6 +21,7 @@ import {
   RAW_META,
   RAW_NONE_BY_HOUR,
   RAW_REQUESTS,
+  RAW_SESSIONS,
 } from './fixtures/usage';
 
 const DATA: UsageReportData = {
@@ -114,7 +117,7 @@ describe('recent requests and status rendering', () => {
       createElement(RequestsTable, {
         rows: normalizeRequests(RAW_REQUESTS),
         meta: normalizeMeta(RAW_META),
-        filters: { key: '', model: '', client: '' },
+        filters: { key: '', model: '', client: '', session: '' },
         onFiltersChange: noop,
         loading: false,
       })
@@ -142,6 +145,66 @@ describe('recent requests and status rendering', () => {
     );
     expect(down).toContain('http://100.90.164.91:8318');
     expect(down).not.toContain('management key');
+  });
+});
+
+describe('sessions rendering', () => {
+  const sessions = normalizeSessions(RAW_SESSIONS);
+  const render = (selected: string) =>
+    renderToStaticMarkup(
+      createElement(SessionsTable, {
+        rows: sessions,
+        sort: 'recent',
+        onSortChange: noop,
+        selected,
+        onSelect: noop,
+        loading: false,
+        error: null,
+      })
+    );
+
+  test('rows show who, where, which models and the totals, with a short id and the full id on hover', () => {
+    const html = render('');
+    for (const text of [
+      'ali',
+      'macbook',
+      'claude-code',
+      'claude-opus-5-5, claude-haiku-5-5',
+      '$0.30',
+    ]) {
+      expect(html).toContain(text);
+    }
+    expect(html).toContain('>3f2a9c1e<');
+    expect(html).toContain('title="3f2a9c1e-7b4d-4e2a-9f10-aa11bb22cc33"');
+    expect(html).toContain('aria-label="Copy session id 3f2a9c1e-7b4d-4e2a-9f10-aa11bb22cc33"');
+    expect(html).toContain('1 h 10 m');
+    expect(html).toContain('Less than a minute');
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Most recent</);
+  });
+
+  test('the selected session is pressed and every other one is not', () => {
+    const html = render('3f2a9c1e-7b4d-4e2a-9f10-aa11bb22cc33');
+    expect(html).toMatch(/aria-pressed="true"[^>]*title="3f2a9c1e-[^"]*"/);
+    expect(html).toMatch(/aria-pressed="false"[^>]*title="b7c8d9e0-[^"]*"/);
+  });
+
+  test('the requests table shows a removable session chip while a session filter is on', () => {
+    const html = renderToStaticMarkup(
+      createElement(RequestsTable, {
+        rows: [],
+        meta: null,
+        filters: {
+          key: '',
+          model: '',
+          client: '',
+          session: '3f2a9c1e-7b4d-4e2a-9f10-aa11bb22cc33',
+        },
+        onFiltersChange: noop,
+        loading: false,
+      })
+    );
+    expect(html).toContain('Session: 3f2a9c1e');
+    expect(html).toContain('aria-label="Clear the session filter"');
   });
 });
 

@@ -2509,6 +2509,24 @@
     "error_unauthorized": "API mức sử dụng đã từ chối khóa quản lý. Nó phải dùng cùng khóa quản lý với proxy.",
     "error_http_title": "Lỗi API mức sử dụng",
     "error_http": "API mức sử dụng trả về {{status}} ({{message}}).",
-    "retry": "Thử lại"
+    "retry": "Thử lại",
+    "sessions_title": "Phiên",
+    "sessions_sort": "Sắp xếp phiên",
+    "sessions_sort_recent": "Gần đây nhất",
+    "sessions_sort_cost": "Chi phí cao nhất",
+    "sessions_hint": "Chọn mã phiên để bên dưới chỉ hiện các yêu cầu của phiên đó.",
+    "sessions_empty": "Không có phiên nào trong khoảng này.",
+    "sessions_error": "Không tải được danh sách phiên ({{message}}).",
+    "col_session": "Phiên",
+    "col_last_active": "Hoạt động cuối",
+    "col_first_seen": "Lần đầu",
+    "col_duration": "Thời lượng",
+    "col_models": "Mô hình",
+    "duration_under_minute": "Dưới một phút",
+    "duration_minutes": "{{minutes}} phút",
+    "duration_hours": "{{hours}} giờ {{minutes}} phút",
+    "session_copy": "Sao chép mã phiên {{id}}",
+    "session_chip": "Phiên: {{id}}",
+    "session_clear": "Bỏ lọc theo phiên"
   }
 }

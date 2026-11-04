@@ -2502,6 +2502,24 @@
     "error_unauthorized": "用量 API 拒绝了管理密钥。它必须与代理使用同一个管理密钥。",
     "error_http_title": "用量 API 错误",
     "error_http": "用量 API 返回 {{status}}（{{message}}）。",
-    "retry": "重试"
+    "retry": "重试",
+    "sessions_title": "会话",
+    "sessions_sort": "会话排序",
+    "sessions_sort_recent": "最近活动",
+    "sessions_sort_cost": "费用最高",
+    "sessions_hint": "点选会话 ID，下方只显示该会话的请求。",
+    "sessions_empty": "此时间范围内没有会话。",
+    "sessions_error": "无法加载会话（{{message}}）。",
+    "col_session": "会话",
+    "col_last_active": "最后活动",
+    "col_first_seen": "首次出现",
+    "col_duration": "时长",
+    "col_models": "模型",
+    "duration_under_minute": "不到 1 分钟",
+    "duration_minutes": "{{minutes}} 分钟",
+    "duration_hours": "{{hours}} 小时 {{minutes}} 分钟",
+    "session_copy": "复制会话 ID {{id}}",
+    "session_chip": "会话：{{id}}",
+    "session_clear": "清除会话筛选"
   }
 }

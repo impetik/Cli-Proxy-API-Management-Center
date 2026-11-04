@@ -2503,6 +2503,24 @@
     "error_unauthorized": "The usage API rejected the management key. It must use the same management key as the proxy.",
     "error_http_title": "Usage API error",
     "error_http": "The usage API answered {{status}} ({{message}}).",
-    "retry": "Try again"
+    "retry": "Try again",
+    "sessions_title": "Sessions",
+    "sessions_sort": "Sort sessions",
+    "sessions_sort_recent": "Most recent",
+    "sessions_sort_cost": "Highest cost",
+    "sessions_hint": "Pick a session id to show only its requests below.",
+    "sessions_empty": "No sessions in this range.",
+    "sessions_error": "Sessions could not be loaded ({{message}}).",
+    "col_session": "Session",
+    "col_last_active": "Last active",
+    "col_first_seen": "First seen",
+    "col_duration": "Duration",
+    "col_models": "Models",
+    "duration_under_minute": "Less than a minute",
+    "duration_minutes": "{{minutes}} m",
+    "duration_hours": "{{hours}} h {{minutes}} m",
+    "session_copy": "Copy session id {{id}}",
+    "session_chip": "Session: {{id}}",
+    "session_clear": "Clear the session filter"
   }
 }

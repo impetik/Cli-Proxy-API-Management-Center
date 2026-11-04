@@ -5,6 +5,7 @@ import type {
   UsageBucket,
   UsageDimension,
   UsageMeta,
+  UsageSession,
   UsageTotals,
 } from '@/types/usage';
 import { formatCompactNumber } from '@/utils/format';
@@ -235,3 +236,20 @@ export function splitProviderGroup(group: string): { provider: string; authType:
     ? { provider: group, authType: '' }
     : { provider: group.slice(0, slash), authType: group.slice(slash + 1) };
 }
+
+export type SessionSort = 'recent' | 'cost';
+
+export const sortSessions = (rows: readonly UsageSession[], sort: SessionSort): UsageSession[] =>
+  [...rows].sort((a, b) =>
+    sort === 'cost'
+      ? b.listCostUsd - a.listCostUsd || b.totalTokens - a.totalTokens
+      : Date.parse(b.lastTs) - Date.parse(a.lastTs)
+  );
+
+/** Whole minutes between first and last activity, or null when a time is missing. */
+export function sessionMinutes(firstTs: string, lastTs: string): number | null {
+  const span = Date.parse(lastTs) - Date.parse(firstTs);
+  return Number.isFinite(span) ? Math.max(0, Math.floor(span / 60_000)) : null;
+}
+
+export const shortSessionId = (id: string): string => id.slice(0, 8);

@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { normalizeAggregate } from '@/services/api/usage';
+import { normalizeAggregate, normalizeSessions } from '@/services/api/usage';
 import {
   OTHER_SERIES,
   autoBucket,
   bucketStarts,
   failureRate,
+  sessionMinutes,
   formatUsd,
+  shortSessionId,
+  sortSessions,
   rankSeries,
   resolveRange,
   splitProviderGroup,
@@ -13,7 +16,7 @@ import {
   stackByTokenType,
   sumTotals,
 } from '@/features/usage/logic';
-import { RAW_KEY_BY_HOUR, RAW_KEY_TOTALS, RAW_NONE_BY_HOUR } from './fixtures/usage';
+import { RAW_KEY_BY_HOUR, RAW_KEY_TOTALS, RAW_NONE_BY_HOUR, RAW_SESSIONS } from './fixtures/usage';
 
 const NOW = Date.parse('2026-11-04T12:34:56Z');
 
@@ -111,5 +114,30 @@ describe('usage formatting', () => {
   test('provider groups split into provider and auth type', () => {
     expect(splitProviderGroup('claude/oauth')).toEqual({ provider: 'claude', authType: 'oauth' });
     expect(splitProviderGroup('openrouter')).toEqual({ provider: 'openrouter', authType: '' });
+  });
+});
+
+describe('usage sessions logic', () => {
+  const sessions = normalizeSessions(RAW_SESSIONS);
+
+  test('sessions sort by recency or by list cost, without mutating the input', () => {
+    expect(sortSessions(sessions, 'recent').map((s) => s.key)).toEqual([
+      'ali',
+      'dirso-builder-staging',
+    ]);
+    expect(sortSessions(sessions, 'cost').map((s) => s.key)).toEqual([
+      'dirso-builder-staging',
+      'ali',
+    ]);
+    expect(sessions[0].key).toBe('ali');
+  });
+
+  test('durations are whole minutes, and short ids keep the first eight characters', () => {
+    expect(sessionMinutes('2026-11-04T01:00:00Z', '2026-11-04T02:10:00Z')).toBe(70);
+    expect(sessionMinutes('2026-11-04T01:00:00Z', '2026-11-04T01:12:40Z')).toBe(12);
+    expect(sessionMinutes('2026-11-04T00:05:00Z', '2026-11-04T00:05:30Z')).toBe(0);
+    expect(sessionMinutes('', 'x')).toBeNull();
+    expect(shortSessionId('3f2a9c1e-7b4d-4e2a-9f10-aa11bb22cc33')).toBe('3f2a9c1e');
+    expect(shortSessionId('short')).toBe('short');
   });
 });

@@ -588,3 +588,89 @@
   color: var(--failure-badge-text);
   font-weight: 650;
 }
+
+/* ---------- sessions ---------- */
+
+.selectedRow td,
+.selectedRow th {
+  background: var(--primary-10);
+}
+
+.sessionCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sessionButton {
+  @include button-reset;
+  padding: 2px 6px;
+  border-radius: $radius-sm;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-tertiary);
+  }
+
+  &[aria-pressed='true'] {
+    background: var(--primary-30);
+    text-decoration: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+}
+
+.modelsCell {
+  @include text-ellipsis;
+  max-width: 240px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  background: var(--primary-10);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-primary);
+  align-self: center;
+
+  /* The filters row sizes its children; the chip keeps its own width. */
+  .filters > & {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+}
+
+.chipClear {
+  @include button-reset;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+  }
+}

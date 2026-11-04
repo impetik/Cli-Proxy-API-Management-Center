@@ -1,13 +1,15 @@
 import { useTranslation } from 'react-i18next';
 import { Select } from '@/components/ui/Select';
 import type { UsageMeta, UsageRequestRow } from '@/types/usage';
-import { formatTimestamp, formatTokens, formatUsd } from '../logic';
+import { formatTimestamp, formatTokens, formatUsd, shortSessionId } from '../logic';
 import styles from '../UsagePage.module.scss';
 
 export interface RequestFilters {
   key: string;
   model: string;
   client: string;
+  /** Set by picking a session in the Sessions table; '' for all. */
+  session: string;
 }
 
 interface RequestsTableProps {
@@ -39,6 +41,19 @@ export function RequestsTable({
       <div className={styles.cardHead}>
         <h2 className={styles.cardTitle}>{t('usage.requests_title')}</h2>
         <div className={styles.filters}>
+          {filters.session && (
+            <span className={styles.chip} title={filters.session}>
+              {t('usage.session_chip', { id: shortSessionId(filters.session) })}
+              <button
+                type="button"
+                className={styles.chipClear}
+                aria-label={t('usage.session_clear')}
+                onClick={() => onFiltersChange({ ...filters, session: '' })}
+              >
+                ×
+              </button>
+            </span>
+          )}
           {FILTERS.map(({ field, list }) => (
             <Select
               key={field}
@@ -62,6 +77,7 @@ export function RequestsTable({
             <thead>
               <tr>
                 <th scope="col">{t('usage.time_utc')}</th>
+                <th scope="col">{t('usage.col_session')}</th>
                 <th scope="col">{t('usage.dimension_key')}</th>
                 <th scope="col">{t('usage.dimension_client')}</th>
                 <th scope="col">{t('usage.col_ip')}</th>
@@ -81,6 +97,9 @@ export function RequestsTable({
                   className={row.failed ? styles.failedRow : undefined}
                 >
                   <th scope="row">{formatTimestamp(row.ts)}</th>
+                  <td className={styles.mono} title={row.session || undefined}>
+                    {row.session ? shortSessionId(row.session) : '—'}
+                  </td>
                   <td>{row.key}</td>
                   <td>{row.client || '—'}</td>
                   <td className={styles.mono}>{row.clientIp}</td>

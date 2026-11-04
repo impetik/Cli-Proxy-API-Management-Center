@@ -2497,6 +2497,24 @@
     "error_unauthorized": "API использования отклонил ключ управления. Он должен использовать тот же ключ управления, что и прокси.",
     "error_http_title": "Ошибка API использования",
     "error_http": "API использования ответил {{status}} ({{message}}).",
-    "retry": "Повторить"
+    "retry": "Повторить",
+    "sessions_title": "Сеансы",
+    "sessions_sort": "Сортировка сеансов",
+    "sessions_sort_recent": "Последние",
+    "sessions_sort_cost": "Самые дорогие",
+    "sessions_hint": "Выберите id сеанса, чтобы ниже остались только его запросы.",
+    "sessions_empty": "За этот период сеансов нет.",
+    "sessions_error": "Не удалось загрузить сеансы ({{message}}).",
+    "col_session": "Сеанс",
+    "col_last_active": "Последняя активность",
+    "col_first_seen": "Начало",
+    "col_duration": "Длительность",
+    "col_models": "Модели",
+    "duration_under_minute": "Меньше минуты",
+    "duration_minutes": "{{minutes}} мин",
+    "duration_hours": "{{hours}} ч {{minutes}} мин",
+    "session_copy": "Скопировать id сеанса {{id}}",
+    "session_chip": "Сеанс: {{id}}",
+    "session_clear": "Снять фильтр по сеансу"
   }
 }

@@ -17,10 +17,12 @@ import {
   resolveRange,
   type CustomDays,
   type RangePreset,
+  type SessionSort,
   type UsageReportData,
 } from './logic';
 import { RequestsTable, type RequestFilters } from './components/RequestsTable';
 import { Segmented } from './components/Segmented';
+import { SessionsTable } from './components/SessionsTable';
 import { UsageReport } from './components/UsageReport';
 import { UsageStatus } from './components/UsageStatus';
 import styles from './UsagePage.module.scss';
@@ -90,7 +92,13 @@ export function UsagePage() {
   }));
   const [bucketChoice, setBucketChoice] = useState<UsageBucket | null>(null);
   const [dimension, setDimension] = useState<UsageDimension>('key');
-  const [filters, setFilters] = useState<RequestFilters>({ key: '', model: '', client: '' });
+  const [filters, setFilters] = useState<RequestFilters>({
+    key: '',
+    model: '',
+    client: '',
+    session: '',
+  });
+  const [sessionSort, setSessionSort] = useState<SessionSort>('recent');
   const [reload, setReload] = useState(0);
 
   const range = useMemo(() => resolveRange(preset, nowMs, custom), [preset, nowMs, custom]);
@@ -132,6 +140,11 @@ export function UsagePage() {
   const requestsKey = ready ? JSON.stringify([range, filters, reload]) : null;
   const requests = useQuery(requestsKey, scope, (signal) =>
     usageApi.requests(conn, { ...range!, limit: 100, ...filters }, signal)
+  );
+
+  const sessionsKey = ready ? JSON.stringify([range, reload]) : null;
+  const sessions = useQuery(sessionsKey, scope, (signal) =>
+    usageApi.sessions(conn, { ...range!, limit: 100 }, signal)
   );
 
   const refresh = useCallback(() => {
@@ -207,6 +220,15 @@ export function UsagePage() {
       ) : report.data ? (
         <div className={styles.body} aria-busy={report.loading}>
           <UsageReport data={report.data} onDimensionChange={setDimension} />
+          <SessionsTable
+            rows={sessions.data ?? []}
+            sort={sessionSort}
+            onSortChange={setSessionSort}
+            selected={filters.session}
+            onSelect={(session) => setFilters({ ...filters, session })}
+            loading={sessions.loading}
+            error={sessions.error}
+          />
           <RequestsTable
             rows={requests.data ?? []}
             meta={report.data.meta}

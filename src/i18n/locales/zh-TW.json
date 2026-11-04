@@ -2530,6 +2530,24 @@
     "error_unauthorized": "用量 API 拒絕了管理金鑰。它必須與代理使用同一把管理金鑰。",
     "error_http_title": "用量 API 錯誤",
     "error_http": "用量 API 回傳 {{status}}（{{message}}）。",
-    "retry": "重試"
+    "retry": "重試",
+    "sessions_title": "工作階段",
+    "sessions_sort": "工作階段排序",
+    "sessions_sort_recent": "最近活動",
+    "sessions_sort_cost": "費用最高",
+    "sessions_hint": "點選工作階段 ID，下方只顯示該工作階段的請求。",
+    "sessions_empty": "此時間範圍內沒有工作階段。",
+    "sessions_error": "無法載入工作階段（{{message}}）。",
+    "col_session": "工作階段",
+    "col_last_active": "最後活動",
+    "col_first_seen": "首次出現",
+    "col_duration": "時長",
+    "col_models": "模型",
+    "duration_under_minute": "不到 1 分鐘",
+    "duration_minutes": "{{minutes}} 分鐘",
+    "duration_hours": "{{hours}} 小時 {{minutes}} 分鐘",
+    "session_copy": "複製工作階段 ID {{id}}",
+    "session_chip": "工作階段：{{id}}",
+    "session_clear": "清除工作階段篩選"
   }
 }

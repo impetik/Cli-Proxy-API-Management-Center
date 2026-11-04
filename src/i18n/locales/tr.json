@@ -2503,6 +2503,24 @@
     "error_unauthorized": "Kullanım API'si yönetim anahtarını reddetti. Proxy ile aynı yönetim anahtarını kullanmalıdır.",
     "error_http_title": "Kullanım API'si hatası",
     "error_http": "Kullanım API'si {{status}} yanıtı verdi ({{message}}).",
-    "retry": "Tekrar dene"
+    "retry": "Tekrar dene",
+    "sessions_title": "Oturumlar",
+    "sessions_sort": "Oturumları sırala",
+    "sessions_sort_recent": "En yeni",
+    "sessions_sort_cost": "En yüksek maliyet",
+    "sessions_hint": "Aşağıda yalnızca isteklerini görmek için bir oturum kimliği seçin.",
+    "sessions_empty": "Bu aralıkta oturum yok.",
+    "sessions_error": "Oturumlar yüklenemedi ({{message}}).",
+    "col_session": "Oturum",
+    "col_last_active": "Son etkinlik",
+    "col_first_seen": "İlk görülme",
+    "col_duration": "Süre",
+    "col_models": "Modeller",
+    "duration_under_minute": "Bir dakikadan az",
+    "duration_minutes": "{{minutes}} dk",
+    "duration_hours": "{{hours}} sa {{minutes}} dk",
+    "session_copy": "{{id}} oturum kimliğini kopyala",
+    "session_chip": "Oturum: {{id}}",
+    "session_clear": "Oturum filtresini temizle"
   }
 }

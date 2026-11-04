@@ -2503,6 +2503,24 @@
     "error_unauthorized": "사용량 API가 관리 키를 거부했습니다. 프록시와 같은 관리 키를 사용해야 합니다.",
     "error_http_title": "사용량 API 오류",
     "error_http": "사용량 API 응답: {{status}} ({{message}}).",
-    "retry": "다시 시도"
+    "retry": "다시 시도",
+    "sessions_title": "세션",
+    "sessions_sort": "세션 정렬",
+    "sessions_sort_recent": "최근 순",
+    "sessions_sort_cost": "비용 높은 순",
+    "sessions_hint": "세션 ID를 선택하면 아래에 그 세션의 요청만 표시됩니다.",
+    "sessions_empty": "이 기간에 세션이 없습니다.",
+    "sessions_error": "세션을 불러오지 못했습니다 ({{message}}).",
+    "col_session": "세션",
+    "col_last_active": "마지막 활동",
+    "col_first_seen": "처음 확인",
+    "col_duration": "지속 시간",
+    "col_models": "모델",
+    "duration_under_minute": "1분 미만",
+    "duration_minutes": "{{minutes}}분",
+    "duration_hours": "{{hours}}시간 {{minutes}}분",
+    "session_copy": "세션 ID {{id}} 복사",
+    "session_chip": "세션: {{id}}",
+    "session_clear": "세션 필터 지우기"
   }
 }
