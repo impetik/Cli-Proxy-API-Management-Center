@@ -1,0 +1,16 @@
+[Unit]
+Description=CLIProxyAPI read-only usage API (usage.db -> :8318, tailnet only)
+After=cli-proxy-usage-collector.service tailscaled.service network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=UV_CACHE_DIR=/var/cache/uv
+ExecStart=/usr/local/bin/uv run --script /opt/cli-proxy-api/usage-api.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

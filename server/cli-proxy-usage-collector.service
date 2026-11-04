@@ -1,0 +1,16 @@
+[Unit]
+Description=CLIProxyAPI usage collector (usage queue -> /var/lib/cli-proxy-api/usage.db)
+After=cli-proxy-api.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/opt/cli-proxy-api/usage-collector.sh
+Restart=always
+RestartSec=5
+# SIGTERM only the script so an in-flight curl finishes and its popped batch reaches the spill file.
+KillMode=mixed
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
