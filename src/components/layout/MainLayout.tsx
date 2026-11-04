@@ -28,6 +28,7 @@ import {
   IconSidebarQuickStart,
   IconSidebarQuota,
   IconSidebarRouting,
+  IconSidebarUsage,
   IconSidebarStore,
   IconSidebarSystem,
   IconChevronDown,
@@ -63,6 +64,7 @@ const sidebarIcons: Record<string, ReactNode> = {
   oauth: <IconSidebarOauth size={18} />,
   quota: <IconSidebarQuota size={18} />,
   routing: <IconSidebarRouting size={18} />,
+  usage: <IconSidebarUsage size={18} />,
   plugins: <IconSidebarPlugins size={18} />,
   pluginStore: <IconSidebarStore size={18} />,
   config: <IconSidebarConfig size={18} />,
@@ -655,6 +657,12 @@ export function MainLayout() {
           labelKey: 'nav.quota_management',
           metaKey: 'nav_meta.quota_management',
           icon: sidebarIcons.quota,
+        },
+        {
+          path: '/usage',
+          labelKey: 'nav.usage',
+          metaKey: 'nav_meta.usage',
+          icon: sidebarIcons.usage,
         },
         {
           path: '/logs',

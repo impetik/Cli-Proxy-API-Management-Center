@@ -85,6 +85,18 @@
   --viz-success: #10b981;
   --viz-failure: #c65746;
 
+  // Categorical series (Usage page stacks), fixed order: slot order is what keeps adjacent
+  // stack segments apart for colour-blind readers. Checked on #f0eee8 and #fff; slots 2-5 sit
+  // below 3:1 on light surfaces, so every chart also has a legend and a numbers table.
+  --viz-series-1: #2a78d6;
+  --viz-series-2: #eb6834;
+  --viz-series-3: #1baf7a;
+  --viz-series-4: #eda100;
+  --viz-series-5: #e87ba4;
+  --viz-series-6: #008300;
+  --viz-series-7: #6250d6;
+  --viz-series-other: #a29c95;
+
   // 动效词汇表：内置 ease 太弱，交互反馈统一用强减速曲线。
   // 按压 160ms / 悬停 200ms，UI 动效不超过 300ms。
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
@@ -238,6 +250,16 @@
   // 因此深色单独降一档。三套主题均已通过对比度/色盲/亮度校验。
   --viz-success: #0fae78;
   --viz-failure: #cf4b3a;
+
+  // Same hues stepped for the dark surface (#1d1b18); all slots >= 3:1.
+  --viz-series-1: #3987e5;
+  --viz-series-2: #d95926;
+  --viz-series-3: #199e70;
+  --viz-series-4: #c98500;
+  --viz-series-5: #d55181;
+  --viz-series-6: #008300;
+  --viz-series-7: #9085e9;
+  --viz-series-other: #6f6962;
 }
 
 @media (max-width: 768px),
