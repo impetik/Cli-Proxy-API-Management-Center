@@ -2521,6 +2521,16 @@
     "duration_hours": "{{hours}}시간 {{minutes}}분",
     "session_copy": "세션 ID {{id}} 복사",
     "session_chip": "세션: {{id}}",
-    "session_clear": "세션 필터 지우기"
+    "session_clear": "세션 필터 지우기",
+    "quotas_title": "할당량",
+    "quotas_stale": "할당량 데이터가 오래되었습니다. 서버의 할당량 검사가 2분 넘게 실행되지 않아 한도가 적용되지 않고 있습니다.",
+    "quotas_blocked": "{{time}} UTC까지 차단됨 ({{window}})",
+    "quotas_limit_5h": "5시간 한도",
+    "quotas_limit_day": "24시간 한도",
+    "quotas_limit_unknown": "한도",
+    "quotas_window_5h": "5시간",
+    "quotas_window_day": "24시간",
+    "quotas_of": "{{window}}: {{limit}} 중 {{used}} ({{percent}}%)",
+    "quotas_hint": "최근 5시간과 24시간 동안의 API 정가 기준 비용입니다. 서버에서 한도 설정: keytool.sh limit <key> 5h=5 day=20"
   }
 }

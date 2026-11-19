@@ -67,3 +67,21 @@ seen under several keys/clients/agents reports the one with the most requests.
 
 `{ "first_ts", "last_ts", "keys": [...], "models": [...], "clients": [...],
 "pricing": { "source": "openrouter", "fetched_at": "...", "unpriced_models": [...] } }`
+
+### `GET /usage/quotas`
+
+Per-key quota status, recomputed every 10 s from `/opt/cli-proxy-api/quotas.json`
+(set with `keytool.sh limit <key> 5h=<usd> day=<usd>`). Only keys with a limit appear.
+
+```json
+{ "updated": "2026-11-19T00:10:00.000Z",
+  "keys": { "laptop-ali": { "limits": { "5h": 5, "day": 20 }, "used": { "5h": 3.1, "day": 7.4 },
+                            "blocked_until": null, "blocked_window": null } } }
+```
+
+- `used` is `list_cost_usd` over the rolling last 5 hours (`5h`) and last 24 hours (`day`).
+- A key is blocked when `used` reaches a limit. `blocked_until` is when enough of its oldest
+  usage leaves the window to fall under the limit; with both windows over, the later one wins.
+- The same blocked set is written to `/var/lib/cli-proxy-api/quota-blocked.json`, which the
+  `key-quota` proxy plugin (`plugin/key-quota/`) reads to answer `429` with `Retry-After`.
+  If `updated` is older than 2 minutes the plugin blocks nothing (fail-open).

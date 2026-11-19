@@ -14,12 +14,14 @@ import {
   RANGE_PRESETS,
   autoBucket,
   hourlyAllowed,
+  quotaRows,
   resolveRange,
   type CustomDays,
   type RangePreset,
   type SessionSort,
   type UsageReportData,
 } from './logic';
+import { QuotasCard } from './components/QuotasCard';
 import { RequestsTable, type RequestFilters } from './components/RequestsTable';
 import { Segmented } from './components/Segmented';
 import { SessionsTable } from './components/SessionsTable';
@@ -147,6 +149,11 @@ export function UsagePage() {
     usageApi.sessions(conn, { ...range!, limit: 100, sort: sessionSort }, signal)
   );
 
+  // Range-independent; a failure (e.g. an older backend's 404) just hides the card.
+  const quotas = useQuery(connected && base ? String(reload) : null, scope, (signal) =>
+    usageApi.quotas(conn, signal)
+  );
+
   const refresh = useCallback(() => {
     setNowMs(Date.now());
     setReload((value) => value + 1);
@@ -219,6 +226,7 @@ export function UsagePage() {
         <UsageStatus error={report.error} base={base} onRetry={refresh} />
       ) : report.data ? (
         <div className={styles.body} aria-busy={report.loading}>
+          {quotas.data && <QuotasCard view={quotaRows(quotas.data, nowMs)} />}
           <UsageReport data={report.data} onDimensionChange={setDimension} />
           <SessionsTable
             rows={sessions.data ?? []}

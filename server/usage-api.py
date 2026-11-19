@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
-"""Read-only usage API over the collector's usage.db. Contract: cpa-dashboard docs/usage-api.md."""
+"""Read-only usage API over the collector's usage.db, plus per-key quota checks. Contract: docs/usage-api.md."""
 from contextlib import closing
 import hmac, json, os, sqlite3, subprocess, threading, time, urllib.request
 from datetime import datetime, timedelta, timezone
@@ -13,6 +13,8 @@ E = os.environ.get
 USAGE_DB = E("USAGE_DB", "/var/lib/cli-proxy-api/usage.db")
 PRICES_DB = E("PRICES_DB", "/var/lib/cli-proxy-api/usage-prices.db")
 KEY = open(E("KEY_FILE", "/root/.cliproxy-mgmt-key")).read().strip().encode()
+QUOTAS_FILE = E("QUOTAS_FILE", "/opt/cli-proxy-api/quotas.json")
+BLOCKED_FILE = E("BLOCKED_FILE", "/var/lib/cli-proxy-api/quota-blocked.json")
 BIND, PORT = E("BIND", "100.90.164.91"), int(E("PORT", "8318"))
 SELF_IP = "100.90.164.91"
 ORIGIN = "http://100.90.164.91:8317"
@@ -26,7 +28,9 @@ GROUPS = {"key": "key_label", "model": "model", "provider": "provider || '/' || 
           "client": "client", "agent": "agent", "none": None}
 BUCKETS = {"hour": "substr(ts, 1, 13) || ':00:00Z'", "day": "substr(ts, 1, 10) || 'T00:00:00Z'", None: None}
 
-prices, by_suffix, fetched_at, hosts = {}, {}, None, {}
+WINDOWS = {"5h": timedelta(hours=5), "day": timedelta(hours=24)}  # both rolling
+
+prices, by_suffix, fetched_at, hosts, quota_state = {}, {}, None, {}, {"updated": None, "keys": {}}
 
 
 def load_prices():
@@ -222,7 +226,36 @@ def meta(q):
                         "unpriced_models": [m for m in models if not price_of(m)]}}
 
 
-ROUTES = {"/usage/aggregate": aggregate, "/usage/requests": requests_, "/usage/sessions": sessions, "/usage/meta": meta}
+def check_quotas():
+    """List cost per key over each rolling window; write the keys at or over a limit to BLOCKED_FILE."""
+    global quota_state
+    try:
+        with open(QUOTAS_FILE) as f: limits = json.load(f)
+    except FileNotFoundError: limits = {}
+    now, keys = datetime.now(timezone.utc), {}
+    with closing(connect()) as db:
+        for key, lim in limits.items():
+            span = {"from": iso(now - WINDOWS["day"]), "to": iso(now + timedelta(minutes=1)), "k": key}
+            rows = [(r[0], r[1]) for r in db.execute(NORM + "SELECT ts, lc FROM c WHERE key_label = :k ORDER BY ts", span)]
+            st = {"limits": lim, "used": {}, "blocked_until": None, "blocked_window": None}
+            for w, d in WINDOWS.items():
+                win = [(t, c) for t, c in rows if t >= iso(now - d)]
+                used = sum(c for _, c in win)
+                st["used"][w] = round(used, 6)
+                if lim.get(w, 0) <= 0 or used < lim[w]: continue
+                for t, c in win:  # the key is free again once enough of its oldest usage leaves the window
+                    used -= c
+                    if used < lim[w]: break
+                until = iso(parse_ts(t) + d)
+                if not st["blocked_until"] or until > st["blocked_until"]: st["blocked_until"], st["blocked_window"] = until, w
+            keys[key] = st
+    quota_state = {"updated": iso(now), "keys": keys}
+    blocked = {k: {"until": v["blocked_until"], "window": v["blocked_window"]} for k, v in keys.items() if v["blocked_until"]}
+    with open(BLOCKED_FILE + ".tmp", "w") as f: json.dump({"updated": iso(now), "blocked": blocked}, f)
+    os.replace(BLOCKED_FILE + ".tmp", BLOCKED_FILE)
+
+
+ROUTES = {"/usage/quotas": lambda q: quota_state, "/usage/aggregate": aggregate, "/usage/requests": requests_, "/usage/sessions": sessions, "/usage/meta": meta}
 
 
 class H(BaseHTTPRequestHandler):
@@ -256,4 +289,5 @@ if __name__ == "__main__":
     load_prices()
     if E("FETCH_PRICES", "1") == "1": threading.Thread(target=loop, args=(refresh_prices, 3600), daemon=True).start()
     if E("TAILSCALE", "1") == "1": threading.Thread(target=loop, args=(refresh_hosts, 300), daemon=True).start()
+    threading.Thread(target=loop, args=(check_quotas, 10), daemon=True).start()
     ThreadingHTTPServer((BIND, PORT), H).serve_forever()

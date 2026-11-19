@@ -1,12 +1,15 @@
 /** Pure range, aggregation and formatting logic for the Usage page. */
 
 import type {
+  QuotaWindow,
   UsageAggregateRow,
   UsageBucket,
   UsageDimension,
   UsageMeta,
+  UsageQuotas,
   UsageTotals,
 } from '@/types/usage';
+import { QUOTA_WINDOWS } from '@/types/usage';
 import { formatCompactNumber } from '@/utils/format';
 
 export type RangePreset = '24h' | '7d' | '30d' | 'custom';
@@ -245,3 +248,55 @@ export function sessionMinutes(firstTs: string, lastTs: string): number | null {
 }
 
 export const shortSessionId = (id: string): string => id.slice(0, 8);
+
+/** The server fails open (enforces nothing) once its checker is this far behind. */
+export const QUOTA_STALE_MS = 2 * 60_000;
+
+export interface QuotaWindowRow {
+  window: QuotaWindow;
+  used: number;
+  limit: number;
+  /** Whole percent of the limit used; can exceed 100. */
+  percent: number;
+}
+
+export interface QuotaRow {
+  key: string;
+  windows: QuotaWindowRow[];
+  /** UTC end of the block: "HH:MM", with the date when it is not today (UTC). */
+  blocked: { time: string; window: QuotaWindow | null } | null;
+}
+
+export interface QuotaView {
+  stale: boolean;
+  rows: QuotaRow[];
+}
+
+export function quotaRows(quotas: UsageQuotas, nowMs: number): QuotaView {
+  const updated = quotas.updated ? Date.parse(quotas.updated) : NaN;
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  const rows = Object.entries(quotas.keys)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, quota]): QuotaRow => {
+      const until = quota.blockedUntil ? Date.parse(quota.blockedUntil) : NaN;
+      const iso = Number.isFinite(until) ? new Date(until).toISOString() : '';
+      return {
+        key,
+        windows: QUOTA_WINDOWS.flatMap((window) => {
+          const limit = quota.limits[window];
+          if (!limit) return [];
+          const used = quota.used[window];
+          return [{ window, used, limit, percent: Math.round((used / limit) * 100) }];
+        }),
+        blocked: iso
+          ? {
+              time: iso.startsWith(today)
+                ? iso.slice(11, 16)
+                : `${iso.slice(0, 10)} ${iso.slice(11, 16)}`,
+              window: quota.blockedWindow,
+            }
+          : null,
+      };
+    });
+  return { stale: !(nowMs - updated <= QUOTA_STALE_MS), rows };
+}

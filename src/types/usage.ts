@@ -70,3 +70,21 @@ export interface UsageSession extends UsageTotals {
   /** By cost, highest first. */
   models: string[];
 }
+
+export type QuotaWindow = '5h' | 'day';
+export const QUOTA_WINDOWS: readonly QuotaWindow[] = ['5h', 'day'];
+
+/** One key's rolling-window spend against its limits (USD at list price). */
+export interface UsageKeyQuota {
+  /** Only windows with a positive limit; the server does not enforce the others. */
+  limits: Partial<Record<QuotaWindow, number>>;
+  used: Record<QuotaWindow, number>;
+  blockedUntil: string | null;
+  blockedWindow: QuotaWindow | null;
+}
+
+export interface UsageQuotas {
+  /** When the server's checker last ran; null if never. */
+  updated: string | null;
+  keys: Record<string, UsageKeyQuota>;
+}

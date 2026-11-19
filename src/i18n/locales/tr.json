@@ -2521,6 +2521,16 @@
     "duration_hours": "{{hours}} sa {{minutes}} dk",
     "session_copy": "{{id}} oturum kimliğini kopyala",
     "session_chip": "Oturum: {{id}}",
-    "session_clear": "Oturum filtresini temizle"
+    "session_clear": "Oturum filtresini temizle",
+    "quotas_title": "Kotalar",
+    "quotas_stale": "Kota verisi eski: sunucunun kota denetimi 2 dakikadan uzun süredir çalışmadı, bu yüzden limitler şu an uygulanmıyor.",
+    "quotas_blocked": "{{time}} UTC'ye kadar engelli ({{window}})",
+    "quotas_limit_5h": "5 saatlik limit",
+    "quotas_limit_day": "24 saatlik limit",
+    "quotas_limit_unknown": "limit",
+    "quotas_window_5h": "5 sa",
+    "quotas_window_day": "24 sa",
+    "quotas_of": "{{window}}: {{used}} / {{limit}} (%{{percent}})",
+    "quotas_hint": "Son 5 ve 24 saatteki API liste fiyatı harcaması. Limitleri sunucuda şu komutla ayarlayın: keytool.sh limit <key> 5h=5 day=20"
   }
 }

@@ -2521,6 +2521,16 @@
     "duration_hours": "{{hours}} h {{minutes}} m",
     "session_copy": "Copy session id {{id}}",
     "session_chip": "Session: {{id}}",
-    "session_clear": "Clear the session filter"
+    "session_clear": "Clear the session filter",
+    "quotas_title": "Quotas",
+    "quotas_stale": "Quota data is stale: the server's quota check has not run for over 2 minutes, so limits are not being enforced.",
+    "quotas_blocked": "Blocked until {{time}} UTC ({{window}})",
+    "quotas_limit_5h": "5-hour limit",
+    "quotas_limit_day": "24-hour limit",
+    "quotas_limit_unknown": "limit",
+    "quotas_window_5h": "5 h",
+    "quotas_window_day": "24 h",
+    "quotas_of": "{{window}}: {{used}} of {{limit}} ({{percent}}%)",
+    "quotas_hint": "Spend at API list price over the last 5 and 24 hours. Set limits on the server with: keytool.sh limit <key> 5h=5 day=20"
   }
 }
