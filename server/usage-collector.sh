@@ -107,7 +107,7 @@ drain() {
 main() {
   trap 'stop=1; kill "${nap:-}" 2>/dev/null' TERM INT   # finish the current batch before exiting
   init_db || exit 1
-  while [ -z "${stop:-}" ]; do drain; sleep 10 & nap=$!; wait $nap; done
+  while [ -z "${stop:-}" ]; do drain; sleep 10 & nap=$!; wait $nap; nap=; done   # clear: a stale pid may be reused
   exit 0   # a requested stop is a clean exit, not wait's 143
 }
 

@@ -38,4 +38,6 @@ install -m 0644 key-quota.so /opt/cli-proxy-api/plugins/key-quota.so && systemct
 
 Enabled in `config.yaml` by `plugins.enabled: true` and `plugins.configs.key-quota.enabled: true`.
 Limits: a key goes over by up to ~20 s of traffic (collector + checker intervals), running
-requests finish, and `/v1/realtime*` and `/v1/alpha/search` skip plugins.
+requests finish, and `/v1/realtime*` and `/v1/alpha/search` skip plugins. Models without a known
+price cost 0, so they never count toward a limit (the Usage page lists them). Only keys that
+start with `cpx-` can be limited (the label comes from the key, as in `usage.db`).

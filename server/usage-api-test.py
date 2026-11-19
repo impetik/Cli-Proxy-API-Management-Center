@@ -3,7 +3,8 @@
 # requires-python = ">=3.11"
 # ///
 """Self-check for usage-api.py: fixed rows in temp DBs, server on a temp port, asserts."""
-import json, os, socket, sqlite3, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import hashlib, json, os, socket, sqlite3, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -48,6 +49,7 @@ ago = lambda h: (NOW - timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 qrows = [("q-a1", 4, "quota-a"), ("q-a2", 1, "quota-a"),                       # 5h: $4 of $3 -> blocked
          ("q-b1", 20, "quota-b"), ("q-b2", 10, "quota-b"), ("q-b3", 6, "quota-b"),  # day: $6 of $5 -> blocked
          ("q-c1", 1, "quota-c"),                                                # $2 of $10 -> fine
+         ("q-d1", 4, "quota-d"), ("q-d2", 1, "quota-d"),                       # both windows over -> day wins
          ("q-x1", 30, "quota-c")]                                               # outside both windows
 db.executemany("""INSERT INTO usage (request_id, ts, key_label, provider, model, input_tokens, output_tokens,
   failed, raw) VALUES (?,?,?,'codex','gpt-6.1-sol',1000000,0,0,?)""",
@@ -61,7 +63,22 @@ assert mig.execute("SELECT count(*) FROM usage WHERE tot IS NULL").fetchone() ==
 assert mig.execute("SELECT inp, cr, session FROM usage WHERE request_id = 'r2'").fetchone() == (200, 800, "s-A")
 mig.close()
 json.dump({"quota-a": {"5h": 3, "day": 100}, "quota-b": {"5h": 100, "day": 5}, "quota-c": {"5h": 10},
-           "quota-unused": {"day": 1}}, open(quotas_file, "w"))
+           "quota-d": {"5h": 3, "day": 3}, "quota-unused": {"day": 1}}, open(quotas_file, "w"))
+
+# Fake management API: the client keys the quota check fingerprints (two share the label quota-b).
+H = "0123456789abcdef" * 2
+KEYS = [f"cpx-quota-a-{H}", f"cpx-quota-b-{H}", f"cpx-quota-b-{H[::-1]}", f"cpx-quota-d-{H}",
+        "cpx-d40869c2ef1a66ed8cc98046462cb082a9003f4f73bf63a0", "not-a-cpx-key"]
+class Keys(BaseHTTPRequestHandler):
+    def do_GET(self):
+        ok = self.path == "/v0/management/api-keys" and self.headers.get("Authorization") == f"Bearer {KEY}"
+        body = json.dumps({"api-keys": KEYS}).encode() if ok else b"{}"
+        self.send_response(200 if ok else 401); self.send_header("Content-Length", str(len(body))); self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *a): pass
+mgmt = ThreadingHTTPServer(("127.0.0.1", 0), Keys)
+threading.Thread(target=mgmt.serve_forever, daemon=True).start()
+scope = lambda k: hashlib.sha256(b"cli-proxy-api:caller-scope:v1\x00" + k.encode()).hexdigest()
 
 p = sqlite3.connect(prices_db)
 p.execute("CREATE TABLE prices (id TEXT PRIMARY KEY, prompt REAL, completion REAL, cache_read REAL, cache_write REAL)")
@@ -77,7 +94,7 @@ p.commit(); p.close()
 with socket.socket() as s:
     s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
 env = dict(os.environ, USAGE_DB=usage_db, PRICES_DB=prices_db, KEY_FILE=key_file, BIND="127.0.0.1",
-           QUOTAS_FILE=quotas_file, BLOCKED_FILE=blocked_file,
+           QUOTAS_FILE=quotas_file, BLOCKED_FILE=blocked_file, PROXY_BASE=f"http://127.0.0.1:{mgmt.server_port}",
            PORT=str(port), FETCH_PRICES="0", TAILSCALE="0")
 srv = subprocess.Popen(["uv", "run", "--script", os.path.join(HERE, "usage-api.py")], env=env)
 base = f"http://127.0.0.1:{port}"
@@ -171,19 +188,26 @@ try:
         if os.path.exists(blocked_file): break
         time.sleep(0.1)
     blocked = json.load(open(blocked_file))
-    assert set(blocked["blocked"]) == {"quota-a", "quota-b"}, blocked
-    a, b = blocked["blocked"]["quota-a"], blocked["blocked"]["quota-b"]
+    assert set(blocked["blocked"]) == {"quota-a", "quota-b", "quota-d"}, blocked
+    a, b, d = (blocked["blocked"][k] for k in ("quota-a", "quota-b", "quota-d"))
     assert a["window"] == "5h" and near(a["until"], 1), a        # oldest $2 (4 h ago) leaves the 5 h window in 1 h
     assert b["window"] == "day" and near(b["until"], 4), b       # oldest $2 (20 h ago) leaves the 24 h window in 4 h
+    assert d["window"] == "day" and near(d["until"], 20), d      # 5 h frees in 1 h, 24 h in 20 h: the later wins
+    # Fingerprints of exactly the blocked label's keys, as the proxy computes CallerScope.
+    assert a["scopes"] == [scope(KEYS[0])] and sorted(b["scopes"]) == sorted([scope(KEYS[1]), scope(KEYS[2])]), b
+    assert d["scopes"] == [scope(KEYS[3])], d
     assert near(blocked["updated"], 0), blocked
     assert call("/usage/quotas", key=None)[0] == 401
     q = json.loads(call("/usage/quotas")[2])["keys"]
-    assert set(q) == {"quota-a", "quota-b", "quota-c", "quota-unused"}, q
+    assert set(q) == {"quota-a", "quota-b", "quota-c", "quota-d", "quota-unused"}, q
+    assert "scopes" not in json.dumps(q), "fingerprints stay out of the dashboard API"
     assert close(q["quota-a"]["used"]["5h"], 4) and close(q["quota-a"]["used"]["day"], 4), q["quota-a"]
     assert close(q["quota-b"]["used"]["5h"], 0) and close(q["quota-b"]["used"]["day"], 6), q["quota-b"]
     assert q["quota-a"]["blocked_until"] == a["until"] and q["quota-a"]["limits"] == {"5h": 3, "day": 100}
     assert q["quota-c"]["blocked_until"] is None and close(q["quota-c"]["used"]["day"], 2), q["quota-c"]
     assert q["quota-unused"]["used"] == {"5h": 0, "day": 0}, q["quota-unused"]
+    srv.terminate()  # systemd stops it with SIGTERM: that must be a clean exit, not a logged failure
+    assert srv.wait(timeout=15) == 0, f"exit code {srv.returncode} on SIGTERM"
     print("usage-api-test: all assertions passed")
 finally:
     srv.terminate(); srv.wait()

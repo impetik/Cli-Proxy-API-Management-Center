@@ -6,9 +6,7 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -22,6 +20,8 @@ const staleAfter = 2 * time.Minute
 type entry struct {
 	Until  time.Time `json:"until"`
 	Window string    `json:"window"`
+	// CallerScope of each key with this label (usage-api.py computes them like the host does).
+	Scopes []string `json:"scopes"`
 }
 
 type blockedDoc struct {
@@ -29,9 +29,10 @@ type blockedDoc struct {
 	Blocked map[string]entry `json:"blocked"`
 }
 
-// Only the fields this plugin reads or writes; names match sdk/pluginapi (no json tags there).
+// What the host sends. CallerScope = sha256("cli-proxy-api:caller-scope:v1\x00" + the key it
+// authenticated), however the client sent it (header or ?key=); see sdk/cliproxy/session/identity.go.
 type interceptRequest struct {
-	Headers http.Header
+	CallerScope string
 }
 
 type interceptResponse struct {
@@ -41,78 +42,53 @@ type interceptResponse struct {
 	ResponseBody    []byte      `json:",omitempty"`
 }
 
-var cache struct {
-	sync.Mutex
-	mod  time.Time
-	size int64
-	doc  blockedDoc
+type blocked struct {
+	label string
+	entry
 }
 
-func load() blockedDoc {
+var cache struct {
+	sync.Mutex
+	mod     time.Time
+	size    int64
+	updated time.Time
+	byScope map[string]blocked
+}
+
+// Returns the checker's last run and the blocks by scope; empty when the file is missing or corrupt.
+func load() (time.Time, map[string]blocked) {
 	st, err := os.Stat(blockedFile)
 	if err != nil {
-		return blockedDoc{}
+		return time.Time{}, nil
 	}
 	cache.Lock()
 	defer cache.Unlock()
 	if !st.ModTime().Equal(cache.mod) || st.Size() != cache.size {
 		var doc blockedDoc
+		cache.updated, cache.byScope = time.Time{}, nil
 		if raw, err := os.ReadFile(blockedFile); err == nil && json.Unmarshal(raw, &doc) == nil {
-			cache.doc = doc
-		} else {
-			cache.doc = blockedDoc{}
+			cache.updated, cache.byScope = doc.Updated, map[string]blocked{}
+			for label, e := range doc.Blocked {
+				for _, s := range e.Scopes {
+					cache.byScope[s] = blocked{label, e}
+				}
+			}
 		}
 		cache.mod, cache.size = st.ModTime(), st.Size()
 	}
-	return cache.doc
-}
-
-// Same label the usage collector stores: cpx-<label>-<32 hex>, else unlabelled-<first 6 chars>.
-var labelled = regexp.MustCompile(`^(.+)-[0-9a-f]{32}$`)
-
-func label(key string) string {
-	k, ok := strings.CutPrefix(key, "cpx-")
-	if !ok || k == "" {
-		return ""
-	}
-	if m := labelled.FindStringSubmatch(k); m != nil {
-		return m[1]
-	}
-	return "unlabelled-" + k[:min(6, len(k))]
-}
-
-func clientKey(h http.Header) string {
-	for name, vals := range h {
-		if len(vals) == 0 {
-			continue
-		}
-		v := strings.TrimSpace(vals[0])
-		switch strings.ToLower(name) {
-		case "authorization":
-			if len(v) > 7 && strings.EqualFold(v[:7], "bearer ") {
-				return strings.TrimSpace(v[7:])
-			}
-		case "x-api-key", "x-goog-api-key":
-			return v
-		}
-	}
-	return ""
+	return cache.updated, cache.byScope
 }
 
 var windowName = map[string]string{"5h": "5-hour", "day": "24-hour"}
 
-func decide(h http.Header, now time.Time) interceptResponse {
-	doc := load()
-	if now.Sub(doc.Updated) > staleAfter {
-		return interceptResponse{}
-	}
-	l := label(clientKey(h))
-	e, ok := doc.Blocked[l]
-	if l == "" || !ok || !now.Before(e.Until) {
+func decide(scope string, now time.Time) interceptResponse {
+	updated, byScope := load()
+	b, ok := byScope[scope]
+	if scope == "" || !ok || now.Sub(updated) > staleAfter || !now.Before(b.Until) {
 		return interceptResponse{}
 	}
 	msg := fmt.Sprintf("Quota reached for key '%s' (%s limit). Resets at %s UTC.",
-		l, windowName[e.Window], e.Until.UTC().Format("2006-01-02 15:04"))
+		b.label, windowName[b.Window], b.Until.UTC().Format("2006-01-02 15:04"))
 	// Anthropic error shape; OpenAI-style clients read the same error.message.
 	body, _ := json.Marshal(map[string]any{"type": "error",
 		"error": map[string]string{"type": "rate_limit_error", "message": msg}})
@@ -120,7 +96,7 @@ func decide(h http.Header, now time.Time) interceptResponse {
 		Terminate:  true,
 		StatusCode: http.StatusTooManyRequests,
 		ResponseHeaders: http.Header{
-			"Retry-After":  {strconv.Itoa(int(math.Ceil(e.Until.Sub(now).Seconds())))},
+			"Retry-After":  {strconv.Itoa(int(math.Ceil(b.Until.Sub(now).Seconds())))},
 			"Content-Type": {"application/json"},
 		},
 		ResponseBody: body,

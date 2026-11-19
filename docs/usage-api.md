@@ -83,5 +83,8 @@ Per-key quota status, recomputed every 10 s from `/opt/cli-proxy-api/quotas.json
 - A key is blocked when `used` reaches a limit. `blocked_until` is when enough of its oldest
   usage leaves the window to fall under the limit; with both windows over, the later one wins.
 - The same blocked set is written to `/var/lib/cli-proxy-api/quota-blocked.json`, which the
-  `key-quota` proxy plugin (`plugin/key-quota/`) reads to answer `429` with `Retry-After`.
+  `key-quota` proxy plugin (`plugin/key-quota/`) reads to answer `429` with `Retry-After`. That
+  file also lists each blocked label's key fingerprints (`scopes`: the proxy's `CallerScope`,
+  sha256 of `cli-proxy-api:caller-scope:v1\0<key>`), so the plugin matches the key the proxy
+  authenticated however it was sent. The fingerprints never appear in `/usage/quotas`.
   If `updated` is older than 2 minutes the plugin blocks nothing (fail-open).

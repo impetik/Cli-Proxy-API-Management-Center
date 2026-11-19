@@ -279,7 +279,8 @@ export function quotaRows(quotas: UsageQuotas, nowMs: number): QuotaView {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, quota]): QuotaRow => {
       const until = quota.blockedUntil ? Date.parse(quota.blockedUntil) : NaN;
-      const iso = Number.isFinite(until) ? new Date(until).toISOString() : '';
+      // A block in the past has ended; the page only refreshes on demand.
+      const iso = until > nowMs ? new Date(until).toISOString() : '';
       return {
         key,
         windows: QUOTA_WINDOWS.flatMap((window) => {

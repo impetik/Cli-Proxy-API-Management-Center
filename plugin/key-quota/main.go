@@ -38,7 +38,7 @@ import (
 	"unsafe"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 //export cliproxy_plugin_init
 func cliproxy_plugin_init(_ *C.cliproxy_host_api, p *C.cliproxy_plugin_api) C.int {
@@ -58,7 +58,16 @@ func KeyQuotaCall(method *C.char, req *C.uint8_t, n C.size_t, out *C.cliproxy_bu
 	if req != nil && n > 0 && n < 1<<31 {
 		body = C.GoBytes(unsafe.Pointer(req), C.int(n))
 	}
-	raw, _ := json.Marshal(handle(C.GoString(method), body))
+	if out == nil {
+		return 1
+	}
+	// A panic here would take the whole proxy down (the host cannot recover a plugin's runtime).
+	result := envelope{OK: true, Result: interceptResponse{}}
+	func() {
+		defer func() { _ = recover() }()
+		result = handle(C.GoString(method), body)
+	}()
+	raw, _ := json.Marshal(result)
 	out.ptr, out.len = C.CBytes(raw), C.size_t(len(raw))
 	return 0
 }
@@ -93,7 +102,7 @@ func handle(method string, body []byte) envelope {
 		if err := json.Unmarshal(body, &r); err != nil {
 			return envelope{OK: true, Result: interceptResponse{}} // unreadable request: fail open
 		}
-		return envelope{OK: true, Result: decide(r.Headers, time.Now())}
+		return envelope{OK: true, Result: decide(r.CallerScope, time.Now())}
 	}
 	return envelope{Error: map[string]string{"code": "unknown_method", "message": "unknown method: " + method}}
 }
