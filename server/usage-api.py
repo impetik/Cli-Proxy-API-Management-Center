@@ -214,8 +214,7 @@ def meta(q):
         col = lambda sql: [r[0] for r in db.execute(sql)]
         keys = col("SELECT DISTINCT key_label FROM usage ORDER BY 1")
         models = col("SELECT DISTINCT model FROM usage ORDER BY 1")
-        clients = sorted({client_name(*r) for r in db.execute("SELECT DISTINCT client_ip, resolved_ip, xff FROM usage")},
-                         key=lambda c: (c is not None, c or ""))  # SQLite order: NULL first
+        clients = col("SELECT DISTINCT client_name(client_ip, resolved_ip, xff) FROM usage ORDER BY 1")
     return {"first_ts": first, "last_ts": last, "keys": keys, "models": models, "clients": clients,
             "pricing": {"source": "openrouter", "fetched_at": fetched_at,
                         "unpriced_models": [m for m in models if not price_of(m)]}}
