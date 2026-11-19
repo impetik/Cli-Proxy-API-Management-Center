@@ -3,7 +3,7 @@
 set -euo pipefail
 dir=$(mktemp -d); trap 'rm -rf "$dir"' EXIT
 export USAGE_DB="$dir/usage.db" USAGE_SPILL="$dir/spill"
-source /opt/cli-proxy-api/usage-collector.sh
+source "$(dirname "$0")/usage-collector.sh"
 init_db
 
 H=0123456789abcdef0123456789abcdef
@@ -33,4 +33,16 @@ fail() { echo "FAIL: $*"; exit 1; }
 sqlite3 "$USAGE_DB" 'PRAGMA wal_checkpoint(TRUNCATE)' >/dev/null
 ! grep -aqE "cpx-|sk-or-v1-|hnk_secrets" "$USAGE_DB" || fail "secret in db file"
 [ "$(q 'PRAGMA journal_mode')" = wal ] || fail "wal"
+[ "$(q "select auth_type||'/'||inp||'/'||cr||'/'||cw||'/'||out||'/'||rsn||'/'||tot||'/'||session from usage where request_id='r1'")" = /10/7/0/2/0/12/r1 ] || fail "derived columns"
+[ "$(q 'select count(*) from usage where tot is null')" = 0 ] || fail "unfilled rows"
 echo "PASS: 2 rows, labels, masking, dedupe, ts, headers dropped"
+
+# SIGTERM must end the collector cleanly (exit 0, no orphaned sleep). The queue URL points nowhere:
+# reading the real queue deletes its records.
+USAGE_QUEUE_URL=http://127.0.0.1:9/none USAGE_KEYFILE=/dev/null bash "$(dirname "$0")/usage-collector.sh" 2>/dev/null &
+pid=$!; sleep 1; kill -TERM $pid
+for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 $pid 2>/dev/null || break; sleep 0.2; done
+kill -0 $pid 2>/dev/null && fail "still running 2 s after SIGTERM"
+rc=0; wait $pid || rc=$?; [ $rc = 0 ] || fail "exit code $rc after SIGTERM"
+! pgrep -P $$ -x sleep >/dev/null || fail "orphaned sleep"
+echo "PASS: clean SIGTERM exit"

@@ -53,6 +53,13 @@ db.executemany("""INSERT INTO usage (request_id, ts, key_label, provider, model,
   failed, raw) VALUES (?,?,?,'codex','gpt-6.1-sol',1000000,0,0,?)""",
   [(i, ago(h), k, raw("oauth", 1000000, 0, 0, 0, 0, i)) for i, h, k in qrows])
 db.commit(); db.close()
+# Old-schema rows must be migrated and backfilled by the collector's init_db before the API reads them.
+subprocess.run(["bash", "-c", f'source "{HERE}/usage-collector.sh" && init_db'], check=True,
+               env=dict(os.environ, USAGE_DB=usage_db, USAGE_SPILL=os.path.join(tmp, "spill")))
+mig = sqlite3.connect(usage_db)
+assert mig.execute("SELECT count(*) FROM usage WHERE tot IS NULL").fetchone() == (0,)
+assert mig.execute("SELECT inp, cr, session FROM usage WHERE request_id = 'r2'").fetchone() == (200, 800, "s-A")
+mig.close()
 json.dump({"quota-a": {"5h": 3, "day": 100}, "quota-b": {"5h": 100, "day": 5}, "quota-c": {"5h": 10},
            "quota-unused": {"day": 1}}, open(quotas_file, "w"))
 

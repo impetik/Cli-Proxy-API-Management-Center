@@ -13,6 +13,12 @@ The collector is the only reader of the proxy's usage queue: every read deletes 
 never read the queue by hand while it runs. Data: `/var/lib/cli-proxy-api/usage.db`; prices:
 `/var/lib/cli-proxy-api/usage-prices.db` (OpenRouter, refreshed daily).
 
+Each batch is inserted and its derived columns (`auth_type`, token split, `session`, client IPs)
+are filled from `raw` in one transaction (`FILL` in `usage-collector.sh`), so the API never parses
+JSON at query time. `init_db` adds and backfills those columns on older databases. The API runs one
+query at a time (`DB_LOCK`): its per-row Python functions make parallel queries slower, not faster.
+Tests that run the collector must set `USAGE_QUEUE_URL` and `USAGE_KEYFILE`, or they drain the live queue.
+
 ## Per-key quotas
 
 `keytool.sh limit <key> 5h=<usd> day=<usd>` (or `off`) writes `/opt/cli-proxy-api/quotas.json`;
