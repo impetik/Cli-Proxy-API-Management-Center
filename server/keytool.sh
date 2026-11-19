@@ -54,14 +54,15 @@ case "${1:-}" in
     ;;
   remove)
     [ -z "${2:-}" ] && { echo "usage: keytool.sh remove <machine-name>"; exit 1; }
-    get_keys | grep -v "^cpx-${2}-" | put_keys
-    "$0" limit "$2" off >/dev/null   # a re-added machine must not inherit the old limit
-    echo "removed keys for '${2}'"
+    name=$(normalise "$2")
+    get_keys | grep -v "^cpx-${name}-" | put_keys
+    "$0" limit "$name" off >/dev/null   # a re-added machine must not inherit the old limit
+    echo "removed keys for '${name}'"
     ;;
   limit)
     [ -z "${2:-}" ] && { echo "usage: keytool.sh limit <machine> [5h=<usd>] [day=<usd>] | off"; exit 1; }
     name=$(normalise "$2")
-    if [ "${3:-}" != off ] && ! labels | grep -qxF "$name"; then
+    if [ "${3:-}" != off ] && ! grep -qxF "$name" <<<"$(labels)"; then
       echo "no key named '$name' (see keytool.sh list; the main key is unlabelled-<first 6 chars>)" >&2; exit 1
     fi
     umask 077

@@ -35,6 +35,7 @@ WINDOWS = {"5h": timedelta(hours=5), "day": timedelta(hours=24)}  # both rolling
 # ponytail: one query at a time. Every query calls Python functions per row, so parallel queries only
 # fight over the GIL (6 parallel calls took 18 s, run in turn 8 s). Separate processes if that is ever too slow.
 DB_LOCK = threading.Lock()
+last_scopes = {}
 prices, by_suffix, fetched_at, hosts, quota_state = {}, {}, None, {}, {"updated": None, "keys": {}}
 
 
@@ -235,7 +236,7 @@ def caller_scopes():
     req = urllib.request.Request(PROXY_BASE + "/v0/management/api-keys", headers={"Authorization": "Bearer " + KEY.decode()})
     with urllib.request.urlopen(req, timeout=10) as r: keys = json.load(r)["api-keys"]
     out = {}
-    for k in keys:
+    for k in (k.strip() for k in keys):  # the host trims keys before hashing
         if (label := key_label(k)):
             out.setdefault(label, []).append(hashlib.sha256(b"cli-proxy-api:caller-scope:v1\x00" + k.encode()).hexdigest())
     return out
@@ -247,7 +248,10 @@ def check_quotas():
     try:
         with open(QUOTAS_FILE) as f: limits = json.load(f)
     except FileNotFoundError: limits = {}
-    scopes = caller_scopes() if limits else {}  # a failure skips this run; the plugin fails open once the file is stale
+    global last_scopes
+    try: last_scopes = caller_scopes() if limits else {}
+    except Exception as e: print(f"key list fetch failed, using the last one: {e!r}", flush=True)  # keys rarely change
+    scopes = last_scopes
     keys = {}
     with DB_LOCK, closing(connect()) as db:
         now = datetime.now(timezone.utc)
