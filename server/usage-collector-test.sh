@@ -40,7 +40,10 @@ echo "PASS: 2 rows, labels, masking, dedupe, ts, headers dropped"
 # SIGTERM must end the collector cleanly (exit 0, no orphaned sleep). The queue URL points nowhere:
 # reading the real queue deletes its records.
 USAGE_QUEUE_URL=http://127.0.0.1:9/none USAGE_KEYFILE=/dev/null bash "$(dirname "$0")/usage-collector.sh" 2>/dev/null &
-pid=$!; sleep 1; kids=$(pgrep -P $pid); [ -n "$kids" ] || fail "collector has no sleep child to check"; kill -TERM $pid
+pid=$!
+for _ in $(seq 1 50); do kids=$(pgrep -P $pid -x sleep || true); [ -n "$kids" ] && break; sleep 0.1; done
+[ -n "$kids" ] || fail "collector never reached its sleep"
+kill -TERM $pid
 for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 $pid 2>/dev/null || break; sleep 0.2; done
 kill -0 $pid 2>/dev/null && fail "still running 2 s after SIGTERM"
 rc=0; wait $pid || rc=$?; [ $rc = 0 ] || fail "exit code $rc after SIGTERM"

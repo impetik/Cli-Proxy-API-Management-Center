@@ -67,7 +67,7 @@ json.dump({"quota-a": {"5h": 3, "day": 100}, "quota-b": {"5h": 100, "day": 5}, "
 
 # Fake management API: the client keys the quota check fingerprints (two share the label quota-b).
 H = "0123456789abcdef" * 2
-KEYS = [f"cpx-quota-a-{H}", f"cpx-quota-b-{H}", f"cpx-quota-b-{H[::-1]}", f"cpx-quota-d-{H}",
+KEYS = [f" cpx-quota-a-{H} ", f"cpx-quota-b-{H}", f"cpx-quota-b-{H[::-1]}", f"cpx-quota-d-{H}",
         "cpx-d40869c2ef1a66ed8cc98046462cb082a9003f4f73bf63a0", "not-a-cpx-key"]
 class Keys(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -194,7 +194,7 @@ try:
     assert b["window"] == "day" and near(b["until"], 4), b       # oldest $2 (20 h ago) leaves the 24 h window in 4 h
     assert d["window"] == "day" and near(d["until"], 20), d      # 5 h frees in 1 h, 24 h in 20 h: the later wins
     # Fingerprints of exactly the blocked label's keys, as the proxy computes CallerScope.
-    assert a["scopes"] == [scope(KEYS[0])] and sorted(b["scopes"]) == sorted([scope(KEYS[1]), scope(KEYS[2])]), b
+    assert a["scopes"] == [scope(KEYS[0].strip())] and sorted(b["scopes"]) == sorted([scope(KEYS[1]), scope(KEYS[2])]), b
     assert d["scopes"] == [scope(KEYS[3])], d
     assert near(blocked["updated"], 0), blocked
     assert call("/usage/quotas", key=None)[0] == 401
@@ -206,6 +206,15 @@ try:
     assert q["quota-a"]["blocked_until"] == a["until"] and q["quota-a"]["limits"] == {"5h": 3, "day": 100}
     assert q["quota-c"]["blocked_until"] is None and close(q["quota-c"]["used"]["day"], 2), q["quota-c"]
     assert q["quota-unused"]["used"] == {"5h": 0, "day": 0}, q["quota-unused"]
+    # Management API down: the next check keeps the last key list, so blocks stay enforced.
+    mgmt.shutdown(); mgmt.server_close()
+    first = blocked["updated"]
+    for _ in range(150):
+        cur = json.load(open(blocked_file))
+        if cur["updated"] != first: break
+        time.sleep(0.1)
+    assert cur["updated"] != first, "checker did not run again"
+    assert cur["blocked"]["quota-a"]["scopes"] == [scope(KEYS[0].strip())], cur
     srv.terminate()  # systemd stops it with SIGTERM: that must be a clean exit, not a logged failure
     assert srv.wait(timeout=15) == 0, f"exit code {srv.returncode} on SIGTERM"
     print("usage-api-test: all assertions passed")
