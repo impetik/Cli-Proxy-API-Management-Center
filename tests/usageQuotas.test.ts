@@ -70,6 +70,12 @@ describe('quota display rows', () => {
     expect(quotaRows(quotas, NOW).rows[0].blocked?.time).toBe('2026-11-20 00:05');
   });
 
+  test('a block that has already ended is not shown', () => {
+    const ended = Date.parse('2026-11-19T14:05:00.000Z');
+    const rows = quotaRows(normalizeQuotas(RAW_QUOTAS), ended).rows;
+    expect(rows.find((r) => r.key === 'desk')!.blocked).toBe(null);
+  });
+
   test('stale after two minutes or when the checker never ran', () => {
     const quotas = normalizeQuotas(RAW_QUOTAS);
     expect(quotaRows(quotas, Date.parse('2026-11-19T00:12:00.000Z')).stale).toBe(false);

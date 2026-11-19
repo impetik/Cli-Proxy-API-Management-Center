@@ -2,41 +2,37 @@ package main
 
 import (
 	"encoding/json"
-	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
-const hex32 = "0123456789abcdef0123456789abcdef"
+// Exactly what usage-api.py writes (iso(): millisecond precision, Z).
+const pyBlocked = `{"updated": "2026-11-19T11:59:50.000Z", "blocked": {
+ "laptop": {"until": "2026-11-19T13:00:00.000Z", "window": "5h", "scopes": ["s-laptop-1", "s-laptop-2"]},
+ "old": {"until": "2026-11-19T11:59:00.000Z", "window": "day", "scopes": ["s-old"]},
+ "noscopes": {"until": "2026-11-19T13:00:00.000Z", "window": "day"}}}`
 
-func writeBlocked(t *testing.T, updated time.Time, blocked map[string]entry) {
+var now = time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
+
+func write(t *testing.T, s string) {
 	t.Helper()
-	raw, _ := json.Marshal(blockedDoc{Updated: updated, Blocked: blocked})
-	if err := os.WriteFile(blockedFile, raw, 0o600); err != nil {
+	if err := os.WriteFile(blockedFile, []byte(s), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func bearer(key string) http.Header { return http.Header{"Authorization": {"Bearer " + key}} }
-
 func TestDecide(t *testing.T) {
 	blockedFile = filepath.Join(t.TempDir(), "blocked.json")
-	now := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
 
-	// Missing file: everything passes (fail open).
-	if r := decide(bearer("cpx-laptop-"+hex32), now); r.Terminate {
+	if decide("s-laptop-1", now).Terminate {
 		t.Fatal("missing file must not block")
 	}
+	write(t, pyBlocked)
 
-	writeBlocked(t, now.Add(-10*time.Second), map[string]entry{
-		"laptop":            {Until: now.Add(time.Hour), Window: "5h"},
-		"old":               {Until: now.Add(-time.Minute), Window: "day"},
-		"unlabelled-d40869": {Until: now.Add(90 * time.Second), Window: "day"},
-	})
-
-	r := decide(bearer("cpx-laptop-"+hex32), now)
+	r := decide("s-laptop-2", now) // any of the label's keys
 	if !r.Terminate || r.StatusCode != 429 || r.ResponseHeaders.Get("Retry-After") != "3600" {
 		t.Fatalf("blocked key: %+v", r)
 	}
@@ -49,45 +45,70 @@ func TestDecide(t *testing.T) {
 		body.Error.Message != "Quota reached for key 'laptop' (5-hour limit). Resets at 2026-11-19 13:00 UTC." {
 		t.Fatalf("body: %s %v", r.ResponseBody, err)
 	}
-
-	for name, h := range map[string]http.Header{
-		"other key":      bearer("cpx-desk-" + hex32),
-		"expired block":  bearer("cpx-old-" + hex32),
-		"no key":         {},
-		"not a cpx key":  bearer("sk-laptop-" + hex32),
-		"label prefix":   bearer("cpx-lap-" + hex32),
-		"label is a sub": bearer("cpx-my-laptop-" + hex32),
-	} {
-		if decide(h, now).Terminate {
+	for name, scope := range map[string]string{"other key": "s-desk", "expired block": "s-old", "no scope": ""} {
+		if decide(scope, now).Terminate {
 			t.Fatalf("%s must pass", name)
 		}
 	}
 
-	// Same key in other headers, and the unlabelled main key (label as the collector writes it).
-	if !decide(http.Header{"X-Api-Key": {"cpx-laptop-" + hex32}}, now).Terminate {
-		t.Fatal("x-api-key must be checked")
-	}
-	if !decide(http.Header{"authorization": {"bearer cpx-laptop-" + hex32}}, now).Terminate {
-		t.Fatal("header and scheme are case-insensitive")
-	}
-	r = decide(bearer("cpx-d40869c2ef1a66ed8cc98046462cb082a9003f4f73bf63a0"), now)
-	if !r.Terminate || r.ResponseHeaders.Get("Retry-After") != "90" {
-		t.Fatalf("unlabelled key: %+v", r)
-	}
-
 	// Stale file (quota checker stopped): fail open.
-	writeBlocked(t, now.Add(-3*time.Minute), map[string]entry{"laptop": {Until: now.Add(time.Hour), Window: "5h"}})
-	if decide(bearer("cpx-laptop-"+hex32), now).Terminate {
+	if decide("s-laptop-1", now.Add(3*time.Minute)).Terminate {
 		t.Fatal("stale file must not block")
 	}
-
 	// A rewrite is picked up; a corrupt file fails open.
-	writeBlocked(t, now, map[string]entry{"desk": {Until: now.Add(time.Hour), Window: "day"}})
-	if !decide(bearer("cpx-desk-"+hex32), now).Terminate || decide(bearer("cpx-laptop-"+hex32), now).Terminate {
+	write(t, strings.Replace(pyBlocked, `"s-laptop-1", `, "", 1))
+	if decide("s-laptop-1", now).Terminate || !decide("s-laptop-2", now).Terminate {
 		t.Fatal("rewritten file not reloaded")
 	}
-	os.WriteFile(blockedFile, []byte("{not json"), 0o600)
-	if decide(bearer("cpx-desk-"+hex32), now).Terminate {
+	write(t, "{not json")
+	if decide("s-laptop-2", now).Terminate {
 		t.Fatal("corrupt file must not block")
+	}
+}
+
+// The JSON the host sends and expects (field names from sdk/pluginapi and internal/pluginhost/rpc_schema.go).
+func TestHandleWire(t *testing.T) {
+	blockedFile = filepath.Join(t.TempDir(), "blocked.json")
+	write(t, strings.Replace(pyBlocked, "2026-11-19T11:59:50.000Z", time.Now().UTC().Format(time.RFC3339), 1))
+
+	raw, _ := json.Marshal(handle("plugin.register", []byte(`{"config_yaml":"","schema_version":10}`)))
+	var reg struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			SchemaVersion int             `json:"schema_version"`
+			Capabilities  map[string]bool `json:"capabilities"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &reg) != nil || !reg.OK || reg.Result.SchemaVersion != 7 ||
+		!reg.Result.Capabilities["request_interceptor"] {
+		t.Fatalf("register: %s", raw)
+	}
+
+	// Real block times are relative to now, so only check the shape and status here.
+	write(t, `{"updated":"`+time.Now().UTC().Format(time.RFC3339)+`","blocked":{"k":{"until":"`+
+		time.Now().Add(time.Hour).UTC().Format(time.RFC3339)+`","window":"day","scopes":["abc"]}}}`)
+	raw, _ = json.Marshal(handle("request.intercept_before", []byte(`{"CallerScope":"abc","Headers":{}}`)))
+	var res struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			Terminate       bool
+			StatusCode      int
+			ResponseHeaders map[string][]string
+			ResponseBody    []byte
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil || !res.OK || !res.Result.Terminate || res.Result.StatusCode != 429 ||
+		len(res.Result.ResponseHeaders["Retry-After"]) != 1 || len(res.Result.ResponseBody) == 0 {
+		t.Fatalf("intercept_before: %s", raw)
+	}
+	for _, m := range []struct{ method, body string }{
+		{"request.intercept_before", `{"CallerScope":"other"}`},
+		{"request.intercept_before", `not json`},
+		{"request.intercept_after", `{"CallerScope":"abc"}`},
+	} {
+		raw, _ = json.Marshal(handle(m.method, []byte(m.body)))
+		if string(raw) != `{"ok":true,"result":{}}` {
+			t.Fatalf("%s %s: %s", m.method, m.body, raw)
+		}
 	}
 }

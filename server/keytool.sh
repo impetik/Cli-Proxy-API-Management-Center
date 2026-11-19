@@ -23,6 +23,11 @@ MGMT="${CLIPROXY_MGMT_KEY:-$(cat /root/.cliproxy-mgmt-key 2>/dev/null)}"
 
 api() { curl -s -m 15 -H "Authorization: Bearer $MGMT" "$@"; }
 
+normalise() { echo "$1" | tr '[:upper:] _' '[:lower:]--' | tr -cd 'a-z0-9-'; }
+
+# Labels as usage-collector.sh stores them: cpx-<label>-<32 hex>, else unlabelled-<first 6 chars>.
+labels() { get_keys | sed -nE 's/^cpx-(.+)-[0-9a-f]{32}$/\1/p; t; s/^cpx-([A-Za-z0-9-]{1,6}).*/unlabelled-\1/p'; }
+
 get_keys() { api "$BASE/v0/management/api-keys" | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)['api-keys']))"; }
 
 put_keys() { # reads keys on stdin, one per line
@@ -41,7 +46,7 @@ case "${1:-}" in
     ;;
   add)
     [ -z "${2:-}" ] && { echo "usage: keytool.sh add <machine-name>"; exit 1; }
-    name=$(echo "$2" | tr '[:upper:] _' '[:lower:]--' | tr -cd 'a-z0-9-')
+    name=$(normalise "$2")
     newkey="cpx-${name}-$(openssl rand -hex 16)"
     { get_keys; echo "$newkey"; } | put_keys
     echo "added key for '${name}':"
@@ -50,12 +55,17 @@ case "${1:-}" in
   remove)
     [ -z "${2:-}" ] && { echo "usage: keytool.sh remove <machine-name>"; exit 1; }
     get_keys | grep -v "^cpx-${2}-" | put_keys
+    "$0" limit "$2" off >/dev/null   # a re-added machine must not inherit the old limit
     echo "removed keys for '${2}'"
     ;;
   limit)
     [ -z "${2:-}" ] && { echo "usage: keytool.sh limit <machine> [5h=<usd>] [day=<usd>] | off"; exit 1; }
+    name=$(normalise "$2")
+    if [ "${3:-}" != off ] && ! labels | grep -qxF "$name"; then
+      echo "no key named '$name' (see keytool.sh list; the main key is unlabelled-<first 6 chars>)" >&2; exit 1
+    fi
     umask 077
-    python3 - "$QUOTAS_FILE" "${@:2}" <<'EOF'
+    python3 - "$QUOTAS_FILE" "$name" "${@:3}" <<'EOF'
 import json, os, re, sys
 path, name, *args = sys.argv[1:]
 try: q = json.load(open(path))

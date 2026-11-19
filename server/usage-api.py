@@ -4,7 +4,8 @@
 # ///
 """Read-only usage API over the collector's usage.db, plus per-key quota checks. Contract: docs/usage-api.md."""
 from contextlib import closing
-import hmac, json, os, sqlite3, subprocess, threading, time, urllib.request
+import hashlib, hmac, json, os, re, signal, sqlite3, subprocess, sys, threading, time, urllib.request
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -18,6 +19,7 @@ BLOCKED_FILE = E("BLOCKED_FILE", "/var/lib/cli-proxy-api/quota-blocked.json")
 BIND, PORT = E("BIND", "100.90.164.91"), int(E("PORT", "8318"))
 SELF_IP = "100.90.164.91"
 ORIGIN = "http://100.90.164.91:8317"
+PROXY_BASE = E("PROXY_BASE", ORIGIN)  # management API, for the client key list
 # Proxy model names whose OpenRouter id is not "<vendor>/<same name>". Checked against /api/v1/models.
 ALIASES = {
     "claude-opus-5-5": "anthropic/claude-opus-5.5", "claude-sonnet-5-5": "anthropic/claude-sonnet-5.5",
@@ -220,17 +222,39 @@ def meta(q):
                         "unpriced_models": [m for m in models if not price_of(m)]}}
 
 
+def key_label(key):
+    """The label usage-collector.sh stores for a client key (its jq scrub), or None if it stores none."""
+    m = re.search(r"cpx-([A-Za-z0-9-]+)", key)
+    if not m: return None
+    k = m[1]
+    return k[:-33] if re.fullmatch(r".+-[0-9a-f]{32}", k) else "unlabelled-" + k[:6]
+
+
+def caller_scopes():
+    """label -> CallerScope of each client key, as the proxy computes it (sdk/cliproxy/session/identity.go)."""
+    req = urllib.request.Request(PROXY_BASE + "/v0/management/api-keys", headers={"Authorization": "Bearer " + KEY.decode()})
+    with urllib.request.urlopen(req, timeout=10) as r: keys = json.load(r)["api-keys"]
+    out = {}
+    for k in keys:
+        if (label := key_label(k)):
+            out.setdefault(label, []).append(hashlib.sha256(b"cli-proxy-api:caller-scope:v1\x00" + k.encode()).hexdigest())
+    return out
+
+
 def check_quotas():
     """List cost per key over each rolling window; write the keys at or over a limit to BLOCKED_FILE."""
     global quota_state
     try:
         with open(QUOTAS_FILE) as f: limits = json.load(f)
     except FileNotFoundError: limits = {}
-    now, keys = datetime.now(timezone.utc), {}
+    scopes = caller_scopes() if limits else {}  # a failure skips this run; the plugin fails open once the file is stale
+    keys = {}
     with DB_LOCK, closing(connect()) as db:
+        now = datetime.now(timezone.utc)
         for key, lim in limits.items():
             span = {"from": iso(now - WINDOWS["day"]), "to": iso(now + timedelta(minutes=1)), "k": key}
-            rows = [(r[0], r[1]) for r in db.execute(NORM + "SELECT ts, lc FROM c WHERE key_label = :k ORDER BY ts", span)]
+            rows = db.execute("""SELECT ts, cost(model, inp, cr, cw, out) FROM usage
+                                 WHERE key_label = :k AND ts >= :from AND ts < :to ORDER BY ts""", span).fetchall()
             st = {"limits": lim, "used": {}, "blocked_until": None, "blocked_window": None}
             for w, d in WINDOWS.items():
                 win = [(t, c) for t, c in rows if t >= iso(now - d)]
@@ -244,7 +268,8 @@ def check_quotas():
                 if not st["blocked_until"] or until > st["blocked_until"]: st["blocked_until"], st["blocked_window"] = until, w
             keys[key] = st
     quota_state = {"updated": iso(now), "keys": keys}
-    blocked = {k: {"until": v["blocked_until"], "window": v["blocked_window"]} for k, v in keys.items() if v["blocked_until"]}
+    blocked = {k: {"until": v["blocked_until"], "window": v["blocked_window"], "scopes": scopes.get(k, [])}
+               for k, v in keys.items() if v["blocked_until"]}
     with open(BLOCKED_FILE + ".tmp", "w") as f: json.dump({"updated": iso(now), "blocked": blocked}, f)
     os.replace(BLOCKED_FILE + ".tmp", BLOCKED_FILE)
 
@@ -274,14 +299,19 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path not in ROUTES: return self.send(404, {"error": "not found"})
         try:
-            with DB_LOCK: body = ROUTES[u.path](parse_qs(u.query, keep_blank_values=True))
+            with nullcontext() if u.path == "/usage/quotas" else DB_LOCK:  # quotas is in memory
+                body = ROUTES[u.path](parse_qs(u.query, keep_blank_values=True))
             self.send(200, body)
         except Bad as e: self.send(400, {"error": str(e)})
+        except Exception as e:
+            print(f"{u.path} failed: {e!r}", flush=True)
+            self.send(500, {"error": "internal error"})
 
     def log_message(self, fmt, *args): pass  # keep the journal free of query strings
 
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # systemd's stop is a clean exit, not a failure
     load_prices()
     if E("FETCH_PRICES", "1") == "1": threading.Thread(target=loop, args=(refresh_prices, 3600), daemon=True).start()
     if E("TAILSCALE", "1") == "1": threading.Thread(target=loop, args=(refresh_hosts, 300), daemon=True).start()
