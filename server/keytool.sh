@@ -74,9 +74,8 @@ print(f"{name}: " + (", ".join(f"{w} ${v}" for w, v in lim.items()) if lim else 
 EOF
     ;;
   limits)
-    host=$(echo "$BASE" | sed -E 's#^http://([^:]+):.*#\1#')
     { echo "KEY 5H_USED/LIMIT DAY_USED/LIMIT BLOCKED_UNTIL_UTC"
-      api "http://$host:8318/usage/quotas" | jq -r '.keys | to_entries[] | .value as $v | [.key,
+      api "http://100.90.164.91:8318/usage/quotas" | jq -r '.keys | to_entries[] | .value as $v | [.key,
         ("5h", "day" | "$\($v.used[.] * 100 | round / 100)/\($v.limits[.] // "-")"),
         ($v.blocked_until // "-" | .[:16])] | @tsv'; } | column -t
     ;;
