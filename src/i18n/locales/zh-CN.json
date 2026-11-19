@@ -2520,6 +2520,16 @@
     "duration_hours": "{{hours}} 小时 {{minutes}} 分钟",
     "session_copy": "复制会话 ID {{id}}",
     "session_chip": "会话：{{id}}",
-    "session_clear": "清除会话筛选"
+    "session_clear": "清除会话筛选",
+    "quotas_title": "额度",
+    "quotas_stale": "额度数据已过期：服务器的额度检查已超过 2 分钟未运行，限制当前未生效。",
+    "quotas_blocked": "已封禁至 {{time}} UTC（{{window}}）",
+    "quotas_limit_5h": "5 小时限额",
+    "quotas_limit_day": "24 小时限额",
+    "quotas_limit_unknown": "限额",
+    "quotas_window_5h": "5 小时",
+    "quotas_window_day": "24 小时",
+    "quotas_of": "{{window}}：{{used}} / {{limit}}（{{percent}}%）",
+    "quotas_hint": "按 API 标价计算的最近 5 小时和 24 小时花费。在服务器上设置限额：keytool.sh limit <key> 5h=5 day=20"
   }
 }

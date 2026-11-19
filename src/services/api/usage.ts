@@ -7,11 +7,15 @@
  * A 401 here does not log the user out: it only says this sidecar rejected the key.
  */
 
+import { QUOTA_WINDOWS } from '@/types/usage';
 import type {
+  QuotaWindow,
   UsageAggregateRow,
   UsageBucket,
   UsageGroup,
+  UsageKeyQuota,
   UsageMeta,
+  UsageQuotas,
   UsageRequestRow,
   UsageSession,
   UsageTokens,
@@ -136,6 +140,29 @@ export const normalizeMeta = (value: unknown): UsageMeta => {
   };
 };
 
+const quotaWindow = (value: unknown): QuotaWindow | null =>
+  QUOTA_WINDOWS.find((w) => w === value) ?? null;
+
+export const normalizeQuotas = (value: unknown): UsageQuotas => {
+  const raw = asRecord(value) ?? {};
+  const keys: Record<string, UsageKeyQuota> = {};
+  for (const [key, entry] of Object.entries(asRecord(raw.keys) ?? {})) {
+    const quota = asRecord(entry);
+    if (!quota) continue;
+    const limits = asRecord(quota.limits) ?? {};
+    const used = asRecord(quota.used) ?? {};
+    keys[key] = {
+      limits: Object.fromEntries(
+        QUOTA_WINDOWS.filter((w) => num(limits[w]) > 0).map((w) => [w, num(limits[w])])
+      ),
+      used: { '5h': num(used['5h']), day: num(used.day) },
+      blockedUntil: strOrNull(quota.blocked_until),
+      blockedWindow: quotaWindow(quota.blocked_window),
+    };
+  }
+  return { updated: strOrNull(raw.updated), keys };
+};
+
 type Query = Record<string, string | number | undefined>;
 
 async function getJson(
@@ -197,4 +224,6 @@ export const usageApi = {
     normalizeSessions(await getJson(conn, '/usage/sessions', { ...query }, signal)),
   meta: async (conn: UsageConnection, signal?: AbortSignal) =>
     normalizeMeta(await getJson(conn, '/usage/meta', {}, signal)),
+  quotas: async (conn: UsageConnection, signal?: AbortSignal) =>
+    normalizeQuotas(await getJson(conn, '/usage/quotas', {}, signal)),
 };

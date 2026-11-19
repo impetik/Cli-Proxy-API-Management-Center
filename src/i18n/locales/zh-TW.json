@@ -2548,6 +2548,16 @@
     "duration_hours": "{{hours}} 小時 {{minutes}} 分鐘",
     "session_copy": "複製工作階段 ID {{id}}",
     "session_chip": "工作階段：{{id}}",
-    "session_clear": "清除工作階段篩選"
+    "session_clear": "清除工作階段篩選",
+    "quotas_title": "額度",
+    "quotas_stale": "額度資料已過期：伺服器的額度檢查已超過 2 分鐘未執行，限制目前未生效。",
+    "quotas_blocked": "已封鎖至 {{time}} UTC（{{window}}）",
+    "quotas_limit_5h": "5 小時限額",
+    "quotas_limit_day": "24 小時限額",
+    "quotas_limit_unknown": "限額",
+    "quotas_window_5h": "5 小時",
+    "quotas_window_day": "24 小時",
+    "quotas_of": "{{window}}：{{used}} / {{limit}}（{{percent}}%）",
+    "quotas_hint": "依 API 標價計算的最近 5 小時與 24 小時花費。在伺服器上設定限額：keytool.sh limit <key> 5h=5 day=20"
   }
 }

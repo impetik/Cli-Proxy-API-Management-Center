@@ -4,10 +4,12 @@
 # ///
 """Self-check for usage-api.py: fixed rows in temp DBs, server on a temp port, asserts."""
 import json, os, socket, sqlite3, subprocess, sys, tempfile, time, urllib.error, urllib.request
+from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 tmp = tempfile.mkdtemp()
-usage_db, prices_db, key_file = (os.path.join(tmp, n) for n in ("usage.db", "prices.db", "key"))
+usage_db, prices_db, key_file, quotas_file, blocked_file = (os.path.join(tmp, n) for n in (
+    "usage.db", "prices.db", "key", "quotas.json", "blocked.json"))
 KEY = "test-key-123"
 open(key_file, "w").write(KEY + "\n")
 
@@ -40,7 +42,19 @@ rows = [
 db.executemany("""INSERT INTO usage (request_id, ts, key_label, client_ip, user_agent, provider, model, input_tokens,
   output_tokens, reasoning_tokens, cache_read_tokens, cache_creation_tokens, total_tokens, latency_ms, failed,
   status_code, raw) VALUES (""" + ",".join("?" * 17) + ")", rows)
+# Quota rows, relative to now: each costs $2 (1M uncached input tokens of gpt-6.1-sol at $2/M).
+NOW = datetime.now(timezone.utc)
+ago = lambda h: (NOW - timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+qrows = [("q-a1", 4, "quota-a"), ("q-a2", 1, "quota-a"),                       # 5h: $4 of $3 -> blocked
+         ("q-b1", 20, "quota-b"), ("q-b2", 10, "quota-b"), ("q-b3", 6, "quota-b"),  # day: $6 of $5 -> blocked
+         ("q-c1", 1, "quota-c"),                                                # $2 of $10 -> fine
+         ("q-x1", 30, "quota-c")]                                               # outside both windows
+db.executemany("""INSERT INTO usage (request_id, ts, key_label, provider, model, input_tokens, output_tokens,
+  failed, raw) VALUES (?,?,?,'codex','gpt-6.1-sol',1000000,0,0,?)""",
+  [(i, ago(h), k, raw("oauth", 1000000, 0, 0, 0, 0, i)) for i, h, k in qrows])
 db.commit(); db.close()
+json.dump({"quota-a": {"5h": 3, "day": 100}, "quota-b": {"5h": 100, "day": 5}, "quota-c": {"5h": 10},
+           "quota-unused": {"day": 1}}, open(quotas_file, "w"))
 
 p = sqlite3.connect(prices_db)
 p.execute("CREATE TABLE prices (id TEXT PRIMARY KEY, prompt REAL, completion REAL, cache_read REAL, cache_write REAL)")
@@ -56,6 +70,7 @@ p.commit(); p.close()
 with socket.socket() as s:
     s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
 env = dict(os.environ, USAGE_DB=usage_db, PRICES_DB=prices_db, KEY_FILE=key_file, BIND="127.0.0.1",
+           QUOTAS_FILE=quotas_file, BLOCKED_FILE=blocked_file,
            PORT=str(port), FETCH_PRICES="0", TAILSCALE="0")
 srv = subprocess.Popen(["uv", "run", "--script", os.path.join(HERE, "usage-api.py")], env=env)
 base = f"http://127.0.0.1:{port}"
@@ -142,6 +157,26 @@ try:
     meta = json.loads(call("/usage/meta")[2])
     assert meta["pricing"]["unpriced_models"] == ["mystery-1"], meta
     assert meta["first_ts"] == "2026-11-03T10:00:00.000Z" and meta["pricing"]["source"] == "openrouter", meta
+    # Quotas: rolling 5 h and 24 h windows of list cost; reset = when enough old usage leaves the window.
+    near = lambda ts, hours: abs((datetime.fromisoformat(ts.replace("Z", "+00:00")) - NOW).total_seconds()
+                                 - hours * 3600) < 60
+    for _ in range(100):
+        if os.path.exists(blocked_file): break
+        time.sleep(0.1)
+    blocked = json.load(open(blocked_file))
+    assert set(blocked["blocked"]) == {"quota-a", "quota-b"}, blocked
+    a, b = blocked["blocked"]["quota-a"], blocked["blocked"]["quota-b"]
+    assert a["window"] == "5h" and near(a["until"], 1), a        # oldest $2 (4 h ago) leaves the 5 h window in 1 h
+    assert b["window"] == "day" and near(b["until"], 4), b       # oldest $2 (20 h ago) leaves the 24 h window in 4 h
+    assert near(blocked["updated"], 0), blocked
+    assert call("/usage/quotas", key=None)[0] == 401
+    q = json.loads(call("/usage/quotas")[2])["keys"]
+    assert set(q) == {"quota-a", "quota-b", "quota-c", "quota-unused"}, q
+    assert close(q["quota-a"]["used"]["5h"], 4) and close(q["quota-a"]["used"]["day"], 4), q["quota-a"]
+    assert close(q["quota-b"]["used"]["5h"], 0) and close(q["quota-b"]["used"]["day"], 6), q["quota-b"]
+    assert q["quota-a"]["blocked_until"] == a["until"] and q["quota-a"]["limits"] == {"5h": 3, "day": 100}
+    assert q["quota-c"]["blocked_until"] is None and close(q["quota-c"]["used"]["day"], 2), q["quota-c"]
+    assert q["quota-unused"]["used"] == {"5h": 0, "day": 0}, q["quota-unused"]
     print("usage-api-test: all assertions passed")
 finally:
     srv.terminate(); srv.wait()

@@ -2515,6 +2515,16 @@
     "duration_hours": "{{hours}} ч {{minutes}} мин",
     "session_copy": "Скопировать id сеанса {{id}}",
     "session_chip": "Сеанс: {{id}}",
-    "session_clear": "Снять фильтр по сеансу"
+    "session_clear": "Снять фильтр по сеансу",
+    "quotas_title": "Квоты",
+    "quotas_stale": "Данные о квотах устарели: проверка квот на сервере не выполнялась более 2 минут, лимиты сейчас не применяются.",
+    "quotas_blocked": "Заблокирован до {{time}} UTC ({{window}})",
+    "quotas_limit_5h": "лимит за 5 часов",
+    "quotas_limit_day": "лимит за 24 часа",
+    "quotas_limit_unknown": "лимит",
+    "quotas_window_5h": "5 ч",
+    "quotas_window_day": "24 ч",
+    "quotas_of": "{{window}}: {{used}} из {{limit}} ({{percent}}%)",
+    "quotas_hint": "Расходы по прейскуранту API за последние 5 и 24 часа. Лимиты задаются на сервере: keytool.sh limit <key> 5h=5 day=20"
   }
 }

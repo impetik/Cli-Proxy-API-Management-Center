@@ -2527,6 +2527,16 @@
     "duration_hours": "{{hours}} giờ {{minutes}} phút",
     "session_copy": "Sao chép mã phiên {{id}}",
     "session_chip": "Phiên: {{id}}",
-    "session_clear": "Bỏ lọc theo phiên"
+    "session_clear": "Bỏ lọc theo phiên",
+    "quotas_title": "Hạn mức",
+    "quotas_stale": "Dữ liệu hạn mức đã cũ: máy chủ chưa kiểm tra hạn mức hơn 2 phút, nên giới hạn hiện không được áp dụng.",
+    "quotas_blocked": "Bị chặn đến {{time}} UTC ({{window}})",
+    "quotas_limit_5h": "giới hạn 5 giờ",
+    "quotas_limit_day": "giới hạn 24 giờ",
+    "quotas_limit_unknown": "giới hạn",
+    "quotas_window_5h": "5 giờ",
+    "quotas_window_day": "24 giờ",
+    "quotas_of": "{{window}}: {{used}} / {{limit}} ({{percent}}%)",
+    "quotas_hint": "Chi phí theo giá niêm yết API trong 5 và 24 giờ qua. Đặt giới hạn trên máy chủ bằng: keytool.sh limit <key> 5h=5 day=20"
   }
 }
