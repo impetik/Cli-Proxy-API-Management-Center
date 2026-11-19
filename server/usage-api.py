@@ -30,6 +30,9 @@ BUCKETS = {"hour": "substr(ts, 1, 13) || ':00:00Z'", "day": "substr(ts, 1, 10) |
 
 WINDOWS = {"5h": timedelta(hours=5), "day": timedelta(hours=24)}  # both rolling
 
+# ponytail: one query at a time. Every query calls Python functions per row, so parallel queries only
+# fight over the GIL (6 parallel calls took 18 s, run in turn 8 s). Separate processes if that is ever too slow.
+DB_LOCK = threading.Lock()
 prices, by_suffix, fetched_at, hosts, quota_state = {}, {}, None, {}, {"updated": None, "keys": {}}
 
 
@@ -119,20 +122,12 @@ def connect():
     return db
 
 
-# Normalised rows: tokens from raw.token_breakdown (schema 2), columns only as fallback.
+# Normalised rows. The token, auth and session columns are filled from raw by the collector (FILL).
+# c is MATERIALIZED: sessions() reads it five times, and SQLite would otherwise rebuild it each time.
 NORM = """WITH n AS (SELECT ts, key_label, client_ip, user_agent, provider, model, endpoint, latency_ms, failed, status_code,
-  COALESCE(json_extract(raw, '$.auth_type'), '') AS auth_type,
-  COALESCE(json_extract(raw, '$.token_breakdown.input.uncached_tokens'), input_tokens, 0) AS inp,
-  COALESCE(json_extract(raw, '$.token_breakdown.input.cache_read_tokens'), cache_read_tokens, 0) AS cr,
-  COALESCE(json_extract(raw, '$.token_breakdown.input.cache_write_tokens'), cache_creation_tokens, 0) AS cw,
-  COALESCE(json_extract(raw, '$.token_breakdown.output.total_tokens'), output_tokens, 0) AS out,
-  COALESCE(json_extract(raw, '$.token_breakdown.output.reasoning_tokens'), reasoning_tokens, 0) AS rsn,
-  COALESCE(json_extract(raw, '$.token_breakdown.total_tokens'), total_tokens, 0) AS tot,
-  client_name(client_ip, json_extract(raw, '$.resolved_client_ip'), json_extract(raw, '$.x_forwarded_for')) AS client,
-  agent(user_agent) AS agent,
-  COALESCE(NULLIF(json_extract(raw, '$.session_id'), ''), request_id) AS session
+  auth_type, inp, cr, cw, out, rsn, tot, client_name(client_ip, resolved_ip, xff) AS client, agent(user_agent) AS agent, session
   FROM usage WHERE ts >= :from AND ts < :to),
-c AS (SELECT *, cost(model, inp, cr, cw, out) AS lc, CASE WHEN auth_type = 'apikey' THEN cost(model, inp, cr, cw, out) ELSE 0 END AS bc FROM n)
+c AS MATERIALIZED (SELECT *, cost(model, inp, cr, cw, out) AS lc, CASE WHEN auth_type = 'apikey' THEN cost(model, inp, cr, cw, out) ELSE 0 END AS bc FROM n)
 """
 AGG = """COUNT(*) AS requests, SUM(failed) AS failed, SUM(inp) AS input_tokens, SUM(cr) AS cache_read_tokens,
   SUM(cw) AS cache_write_tokens, SUM(out) AS output_tokens, SUM(rsn) AS reasoning_tokens, SUM(tot) AS total_tokens,
@@ -219,8 +214,8 @@ def meta(q):
         col = lambda sql: [r[0] for r in db.execute(sql)]
         keys = col("SELECT DISTINCT key_label FROM usage ORDER BY 1")
         models = col("SELECT DISTINCT model FROM usage ORDER BY 1")
-        clients = col("""SELECT DISTINCT client_name(client_ip, json_extract(raw, '$.resolved_client_ip'),
-                         json_extract(raw, '$.x_forwarded_for')) FROM usage ORDER BY 1""")
+        clients = sorted({client_name(*r) for r in db.execute("SELECT DISTINCT client_ip, resolved_ip, xff FROM usage")},
+                         key=lambda c: (c is not None, c or ""))  # SQLite order: NULL first
     return {"first_ts": first, "last_ts": last, "keys": keys, "models": models, "clients": clients,
             "pricing": {"source": "openrouter", "fetched_at": fetched_at,
                         "unpriced_models": [m for m in models if not price_of(m)]}}
@@ -233,7 +228,7 @@ def check_quotas():
         with open(QUOTAS_FILE) as f: limits = json.load(f)
     except FileNotFoundError: limits = {}
     now, keys = datetime.now(timezone.utc), {}
-    with closing(connect()) as db:
+    with DB_LOCK, closing(connect()) as db:
         for key, lim in limits.items():
             span = {"from": iso(now - WINDOWS["day"]), "to": iso(now + timedelta(minutes=1)), "k": key}
             rows = [(r[0], r[1]) for r in db.execute(NORM + "SELECT ts, lc FROM c WHERE key_label = :k ORDER BY ts", span)]
@@ -279,7 +274,9 @@ class H(BaseHTTPRequestHandler):
             return self.send(401, {"error": "unauthorized"})
         u = urlparse(self.path)
         if u.path not in ROUTES: return self.send(404, {"error": "not found"})
-        try: self.send(200, ROUTES[u.path](parse_qs(u.query, keep_blank_values=True)))
+        try:
+            with DB_LOCK: body = ROUTES[u.path](parse_qs(u.query, keep_blank_values=True))
+            self.send(200, body)
         except Bad as e: self.send(400, {"error": str(e)})
 
     def log_message(self, fmt, *args): pass  # keep the journal free of query strings
