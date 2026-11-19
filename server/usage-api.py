@@ -244,14 +244,12 @@ def caller_scopes():
 
 def check_quotas():
     """List cost per key over each rolling window; write the keys at or over a limit to BLOCKED_FILE."""
-    global quota_state
+    global quota_state, last_scopes
     try:
         with open(QUOTAS_FILE) as f: limits = json.load(f)
     except FileNotFoundError: limits = {}
-    global last_scopes
     try: last_scopes = caller_scopes() if limits else {}
     except Exception as e: print(f"key list fetch failed, using the last one: {e!r}", flush=True)  # keys rarely change
-    scopes = last_scopes
     keys = {}
     with DB_LOCK, closing(connect()) as db:
         now = datetime.now(timezone.utc)
@@ -272,7 +270,7 @@ def check_quotas():
                 if not st["blocked_until"] or until > st["blocked_until"]: st["blocked_until"], st["blocked_window"] = until, w
             keys[key] = st
     quota_state = {"updated": iso(now), "keys": keys}
-    blocked = {k: {"until": v["blocked_until"], "window": v["blocked_window"], "scopes": scopes.get(k, [])}
+    blocked = {k: {"until": v["blocked_until"], "window": v["blocked_window"], "scopes": last_scopes.get(k, [])}
                for k, v in keys.items() if v["blocked_until"]}
     with open(BLOCKED_FILE + ".tmp", "w") as f: json.dump({"updated": iso(now), "blocked": blocked}, f)
     os.replace(BLOCKED_FILE + ".tmp", BLOCKED_FILE)
